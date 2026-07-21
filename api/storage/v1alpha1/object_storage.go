@@ -22,17 +22,55 @@ import (
 
 // ObjectStorageSpec defines the desired state of ObjectStorage.
 type ObjectStorageSpec struct {
+	// Region is the geographic region where the object storage should be created.
+	// The resource-broker routes the order to a provider that accepts this region.
+	// +optional
+	Region string `json:"region,omitempty"`
+
+	// Versioning enables object versioning.
+	// +optional
+	Versioning bool `json:"versioning,omitempty"`
 }
 
-// ObjecStorageStatus defines the observed state of ObjectStorage.
+// GroupVersionKind unambiguously identifies a kind.
+type GroupVersionKind struct {
+	Group   string `json:"group"`
+	Version string `json:"version"`
+	Kind    string `json:"kind"`
+}
+
+type RelatedResource struct {
+	GVK  GroupVersionKind `json:"gvk"`
+	Name string           `json:"name"`
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+}
+
+// ObjectStorageStatus defines the observed state of ObjectStorage.
 type ObjectStorageStatus struct {
-	// Conditions represent the latest available observations of the ObjectStorage's state
+	// Status is a human-readable provisioning state (e.g. Provisioning, Available), set by the realizing provider.
+	// +optional
+	Status string `json:"status,omitempty"`
+
+	// URL is the address of the provisioned object storage (e.g. gs://bucket or s3://bucket), set by the realizing provider.
+	// +optional
+	URL string `json:"url,omitempty"`
+
+	// Conditions represent the latest available observations of the ObjectStorage's state.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// RelatedResources lists resources related to this ObjectStorage, keyed by identifier.
+	// The resource-broker copies these (e.g. a result Secret) back to the consumer.
+	// +optional
+	RelatedResources map[string]RelatedResource `json:"relatedResources,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Region",type=string,JSONPath=`.spec.region`
+// +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.status`
+// +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.status.url`
 
 // ObjectStorage is the Schema for the ObjectStorage.
 type ObjectStorage struct {

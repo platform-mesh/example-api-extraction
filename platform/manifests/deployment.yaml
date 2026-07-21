@@ -21,6 +21,9 @@ spec:
             - -kcp-kubeconfig=/kubeconfig/kubeconfig
             - -compute-kubeconfig=/compute-kubeconfig/kubeconfig
             - -acceptapi=acceptapis
+            - -coordination-workspace=root:resource-broker
+            - -staging-tree-root=root:resource-broker:staging
+            - -verification-tree-root=root:resource-broker:verification
             - -requeue-interval=1s
           volumeMounts:
             - name: kubeconfig

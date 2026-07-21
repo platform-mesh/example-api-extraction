@@ -110,8 +110,12 @@ EOF
 }
 
 _platform_apis() {
-    log "Installing coordination CRDs into the provider workspace"
-    kubectl::apply "$ws_provider" \
+    log "Creating staging and verification workspaces under root:resource-broker"
+    workspace::create "$ws_rb" "$ws/staging.kubeconfig" "staging"
+    workspace::create "$ws_rb" "$ws/verification.kubeconfig" "verification"
+
+    log "Installing coordination CRDs into root:resource-broker"
+    kubectl::apply "$ws_rb" \
         ./config/coordbroker/crd/coord.broker.platform-mesh.io_assignments.yaml \
         ./config/coordbroker/crd/coord.broker.platform-mesh.io_migrationconfigurations.yaml \
         ./config/coordbroker/crd/coord.broker.platform-mesh.io_migrations.yaml \
@@ -152,10 +156,20 @@ _broker() {
     log "Deploying resource-broker (targets its provisioned provider workspace)"
     kubectl::kustomize "$kind_platform" ./platform/manifests
 
-    # The provisioned kubeconfig already targets the provider workspace via the
-    # in-cluster front-proxy — mount it directly.
+    # temporary workaround - build an admin kubeconfig
+    KUBECONFIG="$kcp_admin" kubectl ws use :root:providers \
+        || die "Failed to enter root:providers"
+    local provider_ws_name="$(KUBECONFIG="$kcp_admin" kubectl get workspaces -o name | grep -o 'resource-broker-[a-z0-9]*' | head -1)"
+    KUBECONFIG="$kcp_admin" kubectl ws use :root
+    [[ -n "$provider_ws_name" ]] || die "Failed to find provisioned provider workspace under root:providers"
+    local provider_ws_path="root:providers:$provider_ws_name"
+
+    kcp::kubeconfig::workspace "$kcp_admin" \
+        "$kubeconfigs/broker-incluster.kubeconfig" \
+        "$provider_ws_path" "$PM_KCP_INCLUSTER"
+
     kubectl create secret generic kcp-kubeconfig --namespace=resource-broker-system --dry-run=client -o yaml \
-        --from-file=kubeconfig="$kubeconfigs/provider-incluster.kubeconfig" \
+        --from-file=kubeconfig="$kubeconfigs/broker-incluster.kubeconfig" \
         | kubectl::apply "$kind_platform" "-"
 
     kubectl::wait "$kind_platform" deployment/resource-broker resource-broker-system condition=Available

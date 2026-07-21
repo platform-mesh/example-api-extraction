@@ -1,0 +1,17 @@
+# PublishedResource for the Azure provider — identical to the GCP/AWS sides, only
+# the target namespace on the compute cluster is azure-orders. Publishes the Object
+# CRD as APIExport "objects" in root:providers:azure.
+apiVersion: syncagent.kcp.io/v1alpha1
+kind: PublishedResource
+metadata:
+  name: azure-objects
+spec:
+  enableWorkspacePaths: true
+  resource:
+    apiGroup: storage.generic.platform-mesh.io
+    kind: Object
+    versions:
+      - v1alpha1
+  naming:
+    namespace: azure-orders
+    name: '{{ .ClusterName }}-{{ .Object.metadata.namespace }}-{{ .Object.metadata.name }}'

@@ -1,7 +1,7 @@
-# floci-aws Emulator (S3, LocalStack-kompatibel: Port 4566, Fake-Creds).
-# Analog zu floci-gcp aufgebaut.
-# VERIFY (vor Ort): Image-Tag (floci/floci-aws:latest?), Port (4566?) und
-# Env-Praefix (FLOCI_AWS_*?) gegen die floci-aws-Doku pruefen — floci.io/aws.
+# floci-aws emulator (S3, LocalStack-compatible: port 4566, fake creds).
+# Built analogously to floci-gcp.
+# VERIFY (on site): image tag (floci/floci-aws:latest?), port (4566?) and env
+# prefix (FLOCI_AWS_*?) against the floci-aws docs — floci.io/aws.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -24,8 +24,8 @@ spec:
       labels:
         app.kubernetes.io/name: floci-aws
     spec:
-      # Gleiche Falle wie floci-gcp: Service-Links (FLOCI_AWS_PORT=tcp://...)
-      # kollidieren mit dem FLOCI_AWS_*-Env-Praefix -> aus.
+      # Same trap as floci-gcp: service links (FLOCI_AWS_PORT=tcp://...) collide
+      # with the FLOCI_AWS_* env prefix -> off.
       enableServiceLinks: false
       containers:
         - name: floci-aws
@@ -37,8 +37,8 @@ spec:
             - name: FLOCI_AWS_HOSTNAME
               value: floci-aws.floci-aws.svc.cluster.local
           readinessProbe:
-            # tcpSocket statt httpGet: floci-aws-Health-Pfad noch nicht
-            # verifiziert; TCP-Ready ist robust genug fuer den PoC.
+            # tcpSocket instead of httpGet: the floci-aws health path isn't
+            # verified yet; TCP-ready is robust enough for the PoC.
             tcpSocket:
               port: 4566
             initialDelaySeconds: 5

@@ -1,15 +1,15 @@
-# kro ResourceGraphDefinition: GCP-Realisierung eines generischen storage.Object.
-# kro erzeugt aus diesem schema-Block selbst die CRD
-# objects.storage.generic.platform-mesh.io auf dem Compute-Cluster; der
-# api-syncagent publiziert sie in den Provider-Workspace (APIExport "objects").
+# kro ResourceGraphDefinition: GCP realization of a generic storage.Object.
+# kro generates the CRD objects.storage.generic.platform-mesh.io from this schema
+# block itself on the compute cluster; the api-syncagent publishes it into the
+# provider workspace (APIExport "objects").
 #
-# Realisierung: ein Job legt den Bucket per curl in floci-gcp an
-# (POST /storage/v1/b). Bewusst KEIN Crossplane — kro relayed direkt auf ein
-# Kubernetes-Workload, analog zum kropg-Provider im Postgres-Beispiel.
+# Realization: a Job creates the bucket in floci-gcp via curl (POST /storage/v1/b).
+# Deliberately NO Crossplane — kro relays directly onto a Kubernetes workload,
+# analogous to the kropg provider in the Postgres example.
 #
-# GRENZE (PoC): Der Job legt nur an (create-only). Beim Loeschen/Cutover raeumt
-# kro den Job ab, nicht den Bucket. floci ist ephemer (kind delete wischt alles) —
-# fuer produktiv braeuchte es einen Delete-Job/Finalizer. Siehe tasks/todo.md.
+# LIMIT (PoC): the Job only creates (create-only). On delete/cutover kro tears
+# down the Job, not the bucket. floci is ephemeral (kind delete wipes everything) —
+# production would need a delete-Job/finalizer. See tasks/todo.md.
 apiVersion: kro.run/v1alpha1
 kind: ResourceGraphDefinition
 metadata:
@@ -24,8 +24,8 @@ spec:
       region: string
       versioning: boolean
     status:
-      # Status-Ausdruecke duerfen schema nicht referenzieren -> Bucket-Name wird
-      # als Job-Annotation gestempelt und von dort gelesen (Muster aus kropg).
+      # Status expressions must not reference schema -> the bucket name is stamped
+      # as a Job annotation and read back from there (pattern from kropg).
       url: gs://${createBucket.metadata.annotations["spike.odc/bucket-name"]}
       status: ${createBucket.status.succeeded > 0 ? "Available" : "Provisioning"}
       conditions: ${createBucket.status.conditions}
@@ -33,7 +33,7 @@ spec:
   resources:
 
     - id: createBucket
-      # kro requeued, bis der Job durch ist -> Instanz-Status wird Available.
+      # kro requeues until the Job is done -> instance status becomes Available.
       readyWhen:
         - ${createBucket.status.succeeded > 0}
       template:
@@ -43,9 +43,9 @@ spec:
           name: ${schema.metadata.name}-create
           namespace: ${schema.metadata.namespace}
           annotations:
-            # Bucket-Name = urspruenglicher Bestellname (syncagent mangelt den
-            # Objektnamen beim Sync; das Original steht in der Annotation).
-            # .orValue haelt es robust, falls die Annotation mal fehlt.
+            # Bucket name = the original order name (the syncagent mangles the
+            # object name on sync; the original lives in the annotation).
+            # .orValue keeps it robust if the annotation is ever missing.
             spike.odc/bucket-name: ${schema.metadata.?annotations["syncagent.kcp.io/remote-object-name"].orValue(schema.metadata.name)}
         spec:
           backoffLimit: 6

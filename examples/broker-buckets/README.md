@@ -1,84 +1,84 @@
-# Spike: vendor-neutrale IaaS-API via resource-broker (floci-gcp + floci-aws, kind)
+# Example: vendor-neutral IaaS API via resource-broker (floci-gcp + floci-aws, kind)
 
-**Status: Geruest — noch nicht ausgefuehrt/verifiziert.** Zum Durchklicken beim
-IPCEI-Hackathon (Potsdam, 21.–24.07.2026, Topic AE09 „Standardized IaaS APIs").
+**Status: scaffold — not yet executed/verified.** A runbook to click through at the
+IPCEI hackathon (Potsdam, 2026-07-21…24, topic AE09 "Standardized IaaS APIs").
 
-## Was der Spike zeigt
+## What this shows
 
-**Ein** generischer Typ `storage.generic.platform-mesh.io/Object` (Bucket),
-**zwei** Provider (GCP → floci-gcp, AWS → floci-aws), und der
+**One** generic type `storage.generic.platform-mesh.io/Object` (a bucket),
+**two** providers (GCP → floci-gcp, AWS → floci-aws), and the
 [resource-broker](https://github.com/platform-mesh/platform-mesh/tree/main/operators/resource-broker)
-routet die Bestellung nach `region` — inklusive Live-**Migration** beim
-Region-Wechsel. Das ist die AE09-These zum Anfassen: eine Bestellung, zwei
-Clouds, Provider-Wechsel ohne Ticket.
+routes the order by `region` — including a live **migration** on region change.
+This is the AE09 thesis made tangible: one order, two clouds, provider switch
+without a ticket.
 
 ```
 Consumer (root:consumer)
-  Object{region: eu}                      ┌── AcceptAPI region=eu ──▶ GCP-Provider
-        │  bindet generische objects-API  │      kro-RGD → Job → floci-gcp (gs://…)
-        ▼                                 │
-  resource-broker  ── routet nach region ─┤
-   (root:platform, Staging/Assignment)    │
-                                          └── AcceptAPI region=us ──▶ AWS-Provider
-   region eu→us  ⇒  Migration, Cutover           kro-RGD → Job → floci-aws (s3://…)
+  Object{region: eu}                       ┌── AcceptAPI region=eu ──▶ GCP provider
+        │  binds the generic objects API   │      kro RGD → Job → floci-gcp (gs://…)
+        ▼                                  │
+  resource-broker  ── routes by region ────┤
+   (root:platform, Staging/Assignment)     │
+                                           └── AcceptAPI region=us ──▶ AWS provider
+   region eu→us  ⇒  Migration, cutover           kro RGD → Job → floci-aws (s3://…)
 ```
 
-Der Baustein darunter — Crossplane/provider-terraform gegen einen einzelnen
-floci-Emulator — wurde in einem vorangegangenen GCP-Spike verifiziert (ein
-Provider, fest ueber api-syncagent verdrahtet). Dieses Beispiel setzt die
-**Routing-Schicht** darueber (Broker) und einen **zweiten** Provider obendrauf;
-die Realisierung laeuft hier ueber **kro** (Upstream-Muster), nicht Crossplane.
+The building block underneath — Crossplane/provider-terraform against a single
+floci emulator — was verified in an earlier GCP spike (one provider, wired
+statically through the api-syncagent). This example adds the **routing layer** on
+top (the broker) and a **second** provider; realization here goes through **kro**
+(the upstream pattern), not Crossplane.
 
-## Architektur-Entscheidungen (festgelegt)
+## Architecture decisions (fixed)
 
-- **Realisierung: kro RGD**, nicht Crossplane — wie die Upstream-Beispiele
-  (`broker-certificates`, `broker-postgres`). kro erzeugt aus der RGD selbst die
-  Provider-CRD und relayed auf ein Kubernetes-Workload.
-- **kro-Ziel: ein Job mit CLI** (`curl` gegen floci-gcp, `aws` gegen floci-aws) —
-  garantiert lokal lauffaehig, null Crossplane. Analog zum `kropg`-Provider
-  (Postgres als schlichtes Deployment). ACK/Config-Connector mit
-  Endpoint-Override waeren die „so saehe es echt aus"-Ausbaustufe.
-- **Topologie: ein kind-Cluster.** Die Beispiele nutzen drei (platform + 2
-  Provider); hier kollabiert auf einen Node — Broker + kro + beide floci +
-  2× syncagent. kcp-Workspaces bleiben logisch getrennt.
+- **Realization: kro RGD**, not Crossplane — like the upstream examples
+  (`broker-certificates`, `broker-postgres`). kro generates the provider CRD from
+  the RGD itself and relays it onto a Kubernetes workload.
+- **kro target: a Job with a CLI** (`curl` against floci-gcp, `aws` against
+  floci-aws) — guaranteed to run locally, zero Crossplane. Analogous to the
+  `kropg` provider (Postgres as a plain Deployment). ACK / Config Connector with
+  an endpoint override would be the "this is what it looks like for real" upgrade.
+- **Topology: a single kind cluster.** The examples use three (platform + 2
+  providers); here it collapses onto one node — broker + kro + both floci +
+  2× syncagent. kcp workspaces stay logically separate.
 
-## Verzeichnis
+## Layout
 
 ```
 manifests/floci-gcp.yaml          Emulator GCS  (:4588)
-manifests/floci-aws.yaml          Emulator S3   (:4566)   [VERIFY Image/Port]
-platform/README.md                die zwei Platform-APIExports (Haupt-Handverdrahtung)
+manifests/floci-aws.yaml          Emulator S3   (:4566)   [VERIFY image/port]
+platform/README.md                the two platform APIExports (main hand-wiring)
 providers/gcp/acceptapi.yaml      region=eu  ──┐
 providers/gcp/rgd-object.yaml     kro → floci-gcp
 providers/gcp/publishedresource-objects.yaml   syncagent → root:providers:gcp
-providers/aws/…                   dito, region=us → floci-aws
-consumer/apibinding-objects.yaml  Consumer bindet generische API
-consumer/order-object.yaml        die Bestellung + Migrations-Patch (im Kommentar)
-tasks/todo.md                     Reihenfolge, offene Punkte, Risiken
+providers/aws/…                   same, region=us → floci-aws
+consumer/apibinding-objects.yaml  consumer binds the generic API
+consumer/order-object.yaml        the order + migration patch (in the comment)
+tasks/todo.md                     ordering, open points, risks
 ```
 
-## Drehbuch
+## Runbook
 
-### 0. Prereqs
+### 0. Prerequisites
 
-`docker`, `kind`, `kubectl`, `helm`, `yq`, `go`, sowie die
-[kcp-kubectl-Plugins](https://docs.kcp.io/kcp/main/setup/kubectl-plugin/)
-(per krew; `export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"`).
+`docker`, `kind`, `kubectl`, `helm`, `yq`, `go`, and the
+[kcp kubectl plugins](https://docs.kcp.io/kcp/main/setup/kubectl-plugin/)
+(via krew; `export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"`).
 
-resource-broker-Repo sparse auschecken:
+Sparse-checkout the resource-broker repo:
 
 ```bash
 git clone --depth 1 --filter=blob:none --sparse \
   https://github.com/platform-mesh/platform-mesh.git pm
 cd pm && git sparse-checkout set operators/resource-broker
 cd operators/resource-broker
-source ./hack/lib.bash    # helm::install::* Helper
+source ./hack/lib.bash    # helm::install::* helpers
 ```
 
-### 1. Ein kind-Cluster + Basis
+### 1. One kind cluster + base
 
-Die Beispiel-`run.bash` baut drei Cluster; wir nehmen einen und richten die Basis
-mit denselben Helpern ein (alles gegen EINEN Kubeconfig):
+The example `run.bash` builds three clusters; we take one and set up the base with
+the same helpers (all against a single kubeconfig):
 
 ```bash
 kind create cluster --name broker-poc
@@ -89,65 +89,65 @@ helm::install::kcp         "$KC"
 helm::install::kro         "$KC"
 ```
 
-> Falls die Helper Cluster-spezifische Namen erwarten: als Vorlage `_setup()` /
-> `_provider_setup()` in `examples/broker-postgres/run.bash` lesen und die
-> `kind create`-Zeilen auf einen Cluster reduzieren.
+> If the helpers expect cluster-specific names: use `_setup()` / `_provider_setup()`
+> in `examples/broker-postgres/run.bash` as a template and reduce the `kind create`
+> lines to a single cluster.
 
-### 2. kcp-Workspaces + Platform-Exports
+### 2. kcp workspaces + platform exports
 
-Struktur aus `broker-postgres/run.bash _setup` uebernehmen:
+Take the structure from `broker-postgres/run.bash _setup`:
 
 ```
-root:platform                      (+ AcceptAPI-Export, + generischer objects-Export)
+root:platform                      (+ AcceptAPI export, + generic objects export)
 root:platform:broker               (Assignment/Migration/StagingWorkspace)
 root:platform:broker:staging
 root:platform:broker:verification
-root:providers:gcp                 (Typ universal, manuelles APIBinding)
+root:providers:gcp                 (type universal, manual APIBinding)
 root:providers:aws
 root:consumer
 ```
 
-Den **generischen `objects`-Export** bereitstellen → siehe `platform/README.md`
-(die einzige groessere Handverdrahtung: CRD→ARS→APIExport). Alle Workspaces vom
-Typ `universal` mit manuellem APIBinding — **nie** `org`/`account` direkt anlegen
-(Lektion aus einem frueheren kcp-Spike: sonst haengen sie im
-`root:security`-Initializer).
+Provide the **generic `objects` export** → see `platform/README.md` (the only
+larger piece of hand-wiring: CRD→ARS→APIExport). All workspaces of type
+`universal` with a manual APIBinding — **never** create `org`/`account` directly
+(a lesson from an earlier kcp spike: they otherwise hang in the
+`root:security` initializer).
 
-### 3. Broker starten
+### 3. Start the broker
 
 ```bash
-./examples/broker-postgres/run.bash start-broker   # baut & startet den Broker im Cluster
+./examples/broker-postgres/run.bash start-broker   # builds & starts the broker in the cluster
 ```
 
-### 4. Provider einrichten (GCP & AWS)
+### 4. Set up providers (GCP & AWS)
 
-Fuer beide Provider (`gcp`, `aws`) — Kubeconfig zeigt hier auf denselben Cluster,
-nur der Ziel-Workspace unterscheidet sich:
+For both providers (`gcp`, `aws`) — the kubeconfig points at the same cluster
+here, only the target workspace differs:
 
 ```bash
-# Emulatoren
+# Emulators
 kubectl apply -f manifests/floci-gcp.yaml
 kubectl apply -f manifests/floci-aws.yaml
 
-# je Provider: kro-RGD (erzeugt die Object-CRD) + syncagent-PublishedResource
+# per provider: kro RGD (creates the Object CRD) + syncagent PublishedResource
 kubectl apply -f providers/gcp/rgd-object.yaml
 kubectl apply -f providers/aws/rgd-object.yaml
-# api-syncagent je Provider installieren (helm::install::api_syncagent … "objects" …),
-# dann:
+# install api-syncagent per provider (helm::install::api_syncagent … "objects" …),
+# then:
 kubectl apply -f providers/gcp/publishedresource-objects.yaml
 kubectl apply -f providers/aws/publishedresource-objects.yaml
 
-# je Provider: AcceptAPI-Export binden, dann AcceptAPI anlegen
-#   (APIBinding acceptapis im jeweiligen Provider-Workspace — Manifest wie im
-#    Postgres-Beispiel, permissionClaims: secrets get/list/watch)
+# per provider: bind the AcceptAPI export, then create the AcceptAPI
+#   (APIBinding acceptapis in the respective provider workspace — manifest as in
+#    the Postgres example, permissionClaims: secrets get/list/watch)
 kubectl --context …:providers:gcp apply -f providers/gcp/acceptapi.yaml
 kubectl --context …:providers:aws apply -f providers/aws/acceptapi.yaml
 
-# beide AcceptAPIs muessen Ready werden (Broker verifiziert Bindbarkeit):
+# both AcceptAPIs must become Ready (broker verifies bindability):
 kubectl wait acceptapi/objects.storage.generic.platform-mesh.io --for=condition=Ready --timeout=5m
 ```
 
-### 5. Bestellen (Consumer)
+### 5. Order (consumer)
 
 ```bash
 kubectl --context …:consumer apply -f consumer/apibinding-objects.yaml
@@ -155,27 +155,28 @@ kubectl --context …:consumer wait apibinding/objects --for=condition=Ready --t
 kubectl --context …:consumer apply -f consumer/order-object.yaml
 ```
 
-Erwartung: Broker legt ein `Assignment` an (→ GCP), staged das Object, syncagent
-zieht es auf den Compute-Cluster, kro-Job legt `gs://bucket-from-consumer` in
-floci-gcp an, `status.url` erscheint im Consumer-Workspace.
+Expectation: the broker creates an `Assignment` (→ GCP), stages the Object, the
+syncagent pulls it onto the compute cluster, the kro Job creates
+`gs://bucket-from-consumer` in floci-gcp, and `status.url` shows up in the
+consumer workspace.
 
-Gegenprobe am Emulator:
+Cross-check at the emulator:
 
 ```bash
 kubectl -n floci-gcp run verify --rm -i --restart=Never --image=curlimages/curl -- \
   -s 'http://floci-gcp.floci-gcp.svc.cluster.local:4588/storage/v1/b?project=test-project'
 ```
 
-### 6. Migration eu → us (der Hoehepunkt)
+### 6. Migration eu → us (the highlight)
 
 ```bash
 kubectl --context …:consumer patch object bucket-from-consumer \
   --type merge -p '{"spec":{"region":"us"}}'
 ```
 
-Broker erzeugt eine `Migration`, staged beim AWS-Provider, beide bedienen kurz
-parallel, dann Cutover: `s3://bucket-from-consumer` in floci-aws, GCP-Kopie wird
-abgeraeumt, `status.url` zeigt jetzt auf S3.
+The broker creates a `Migration`, stages it at the AWS provider, both serve briefly
+in parallel, then cuts over: `s3://bucket-from-consumer` in floci-aws, the GCP copy
+is torn down, and `status.url` now points at S3.
 
 ```bash
 kubectl -n floci-aws run verify --rm -i --restart=Never --image=amazon/aws-cli:2.31.14 \
@@ -183,14 +184,14 @@ kubectl -n floci-aws run verify --rm -i --restart=Never --image=amazon/aws-cli:2
   --endpoint-url http://floci-aws.floci-aws.svc.cluster.local:4566 s3api list-buckets
 ```
 
-### Aufraeumen
+### Cleanup
 
 ```bash
 kind delete cluster --name broker-poc
 ```
 
-## Bekannte Grenzen / Risiken
+## Known limits / risks
 
-Siehe `tasks/todo.md`. Kurz: create-only-Jobs (kein Bucket-Delete beim Cutover;
-floci ist ephemer), floci-aws-Image/Port/Env noch zu verifizieren, und der
-generische `objects`-APIExport ist die einzige nennenswerte Handverdrahtung.
+See `tasks/todo.md`. In short: create-only Jobs (no bucket delete on cutover;
+floci is ephemeral), floci-aws image/port/env still to be verified, and the
+generic `objects` APIExport is the only notable piece of hand-wiring.

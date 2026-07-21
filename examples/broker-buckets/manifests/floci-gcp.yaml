@@ -1,5 +1,5 @@
-# floci-gcp Emulator (Mock-Modus, kein Docker-Socket).
-# Uebernommen aus einem verifizierten GCP-Emulator-Spike — Fallen dort geloest.
+# floci-gcp emulator (mock mode, no Docker socket).
+# Taken from a verified GCP emulator spike — the traps below are already solved.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -22,8 +22,8 @@ spec:
       labels:
         app.kubernetes.io/name: floci-gcp
     spec:
-      # Stolperstein #1: Kubelet-Service-Links (FLOCI_GCP_PORT=tcp://...)
-      # kollidieren mit dem FLOCI_GCP_*-Env-Praefix von Quarkus -> Crash.
+      # Trap #1: kubelet service links (FLOCI_GCP_PORT=tcp://...) collide with
+      # the FLOCI_GCP_* env prefix of Quarkus -> crash on startup.
       enableServiceLinks: false
       containers:
         - name: floci-gcp
@@ -39,8 +39,8 @@ spec:
             - name: FLOCI_GCP_STORAGE_MODE
               value: memory
           readinessProbe:
-            # Stolperstein #2: kein /q/health im Image (404); Storage-Endpoint
-            # antwortet 200.
+            # Trap #2: no /q/health in the image (404); the storage endpoint
+            # answers 200.
             httpGet:
               path: /storage/v1/b?project=test-project
               port: 4588

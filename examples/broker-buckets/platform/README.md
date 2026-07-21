@@ -1,37 +1,36 @@
-# Platform-Workspace: die zwei APIExports
+# Platform workspace: the two APIExports
 
-Der resource-broker braucht im Platform-Workspace (`root:platform`) zwei
-APIExports. Beide werden in den Upstream-Beispielen von `run.bash setup`
-programmatisch erzeugt — fuer diesen Bucket-Spike musst du sie einmal
-bereitstellen:
+The resource-broker needs two APIExports in the platform workspace
+(`root:platform`). Both are created programmatically by `run.bash setup` in the
+upstream examples — for this bucket example you provide them once:
 
-## 1. AcceptAPI-Export (fuer Provider)
+## 1. AcceptAPI export (for providers)
 
-Kommt fertig aus dem resource-broker-Repo:
+Comes ready from the resource-broker repo:
 `config/broker/crd/broker.platform-mesh.io_acceptapis.yaml`.
-Provider binden diesen Export, um ihre `AcceptAPI` anzulegen.
+Providers bind this export to create their `AcceptAPI`.
 
-## 2. Generischer `objects`-Export (fuer Consumer)
+## 2. Generic `objects` export (for consumers)
 
-Die vom Broker "backed" API, die der Consumer bindet und bestellt.
-Basis-CRD liegt upstream: `config/generic/crd/storage.generic.platform-mesh.io_objects.yaml`.
+The broker-backed API that the consumer binds and orders against.
+Base CRD is upstream: `config/generic/crd/storage.generic.platform-mesh.io_objects.yaml`.
 
-kcp will kein CRD, sondern eine **APIResourceSchema** + **APIExport**. Die
-CRD->ARS-Konvertierung ist mechanisch (die Beispiele im resource-broker-Repo
-erzeugen sie in `run.bash setup`; ein CRD->ARS-Skript aus einem frueheren
-GCP-Spike lag ebenfalls vor). Ergebnis:
+kcp doesn't want a CRD but an **APIResourceSchema** + **APIExport**. The
+CRD→ARS conversion is mechanical (the examples in the resource-broker repo
+generate it in `run.bash setup`; a CRD→ARS script from an earlier GCP spike was
+also available). Result:
 
 ```
 APIResourceSchema  v1alpha1.objects.storage.generic.platform-mesh.io
-APIExport          objects   (spec.resources[].schema -> obige ARS)
+APIExport          objects   (spec.resources[].schema -> the ARS above)
 ```
 
-> HAUPT-TODO vor Ort: Diese ARS + den `objects`-APIExport erzeugen. Das ist die
-> einzige groessere Handverdrahtung; alles andere (Broker, kro, syncagent) kommt
-> aus den Repo-Helpern bzw. den Manifesten in `providers/` und `consumer/`.
+> MAIN TODO on site: create this ARS + the `objects` APIExport. It's the only
+> larger piece of hand-wiring; everything else (broker, kro, syncagent) comes from
+> the repo helpers or the manifests in `providers/` and `consumer/`.
 
-## Broker-State-Workspaces
+## Broker state workspaces
 
-`root:platform:broker` (haelt `Assignment`/`Migration`/`StagingWorkspace`) mit
-Kindern `staging` und `verification`. Ebenfalls von `run.bash setup` angelegt —
-Struktur 1:1 aus dem Postgres-Beispiel uebernehmen.
+`root:platform:broker` (holds `Assignment`/`Migration`/`StagingWorkspace`) with
+children `staging` and `verification`. Also created by `run.bash setup` — take the
+structure 1:1 from the Postgres example.

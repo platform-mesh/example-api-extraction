@@ -1,9 +1,9 @@
-# kro ResourceGraphDefinition: AWS-Realisierung eines generischen storage.Object.
-# Identische Struktur zur GCP-RGD — nur das Realisierungs-Ziel ist floci-aws (S3)
-# statt floci-gcp (GCS). Das ist der Kern der Demo: EIN generischer Typ, zwei
-# Provider mit je eigener RGD; der Broker routet nach region.
+# kro ResourceGraphDefinition: AWS realization of a generic storage.Object.
+# Identical structure to the GCP RGD — only the realization target is floci-aws
+# (S3) instead of floci-gcp (GCS). That's the heart of the demo: ONE generic type,
+# two providers each with its own RGD; the broker routes by region.
 #
-# GRENZE (PoC): create-only, wie bei der GCP-RGD. Siehe tasks/todo.md.
+# LIMIT (PoC): create-only, like the GCP RGD. See tasks/todo.md.
 apiVersion: kro.run/v1alpha1
 kind: ResourceGraphDefinition
 metadata:
@@ -47,7 +47,7 @@ spec:
                   env:
                     - name: BUCKET
                       value: ${schema.metadata.?annotations["syncagent.kcp.io/remote-object-name"].orValue(schema.metadata.name)}
-                    # floci-aws ignoriert Auth, verlangt aber gesetzte Creds.
+                    # floci-aws ignores auth but requires creds to be set.
                     - name: AWS_ACCESS_KEY_ID
                       value: test
                     - name: AWS_SECRET_ACCESS_KEY

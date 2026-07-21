@@ -1,12 +1,12 @@
-# Die Bestellung: ein generischer Bucket in region=eu.
-# -> Broker matcht den GCP-Provider (AcceptAPI region valueIn:[eu])
-# -> floci-gcp legt gs://bucket-from-consumer an
-# -> status.url erscheint zurueck im Consumer-Workspace.
+# The order: a generic bucket in region=eu.
+# -> broker matches the GCP provider (AcceptAPI region valueIn:[eu])
+# -> floci-gcp creates gs://bucket-from-consumer
+# -> status.url appears back in the consumer workspace.
 #
-# Migration (Demo-Hoehepunkt): region auf us patchen ->
+# Migration (the demo highlight): patch region to us ->
 #   kubectl patch object bucket-from-consumer --type merge -p '{"spec":{"region":"us"}}'
-# Der Broker erzeugt eine Migration, staged beim AWS-Provider, cutover ->
-# s3://bucket-from-consumer in floci-aws, GCP-Kopie wird abgeraeumt.
+# The broker creates a Migration, stages at the AWS provider, cuts over ->
+# s3://bucket-from-consumer in floci-aws, the GCP copy is torn down.
 apiVersion: storage.generic.platform-mesh.io/v1alpha1
 kind: Object
 metadata:

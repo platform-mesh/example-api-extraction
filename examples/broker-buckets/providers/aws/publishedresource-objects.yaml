@@ -1,6 +1,6 @@
-# PublishedResource fuer den AWS-Provider — identisch zur GCP-Seite, nur der
-# Ziel-Namespace auf dem Compute-Cluster ist aws-orders. Publiziert die
-# Object-CRD als APIExport "objects" in root:providers:aws.
+# PublishedResource for the AWS provider — identical to the GCP side, only the
+# target namespace on the compute cluster is aws-orders. Publishes the Object CRD
+# as APIExport "objects" in root:providers:aws.
 apiVersion: syncagent.kcp.io/v1alpha1
 kind: PublishedResource
 metadata:

@@ -1,11 +1,11 @@
-# AcceptAPI: der GCP-Provider erklaert, dass er storage.Object-Bestellungen
-# mit region=eu bedient. Wird im GCP-Provider-Workspace (root:providers:gcp)
-# angelegt; der Broker sieht sie ueber den Virtual Workspace des AcceptAPI-Exports.
+# AcceptAPI: the GCP provider declares that it serves storage.Object orders with
+# region=eu. Created in the GCP provider workspace (root:providers:gcp); the
+# broker sees it through the virtual workspace of the AcceptAPI export.
 #
-# apiExportName referenziert den APIExport IM Provider-Workspace, unter dem der
-# api-syncagent die vom kro erzeugte Object-CRD publiziert (siehe
-# publishedresource-objects.yaml). Der Broker verifiziert, dass dieser Export
-# bindbar ist, und bindet ihn in seinen Staging-Workspaces.
+# apiExportName references the APIExport IN the provider workspace under which the
+# api-syncagent publishes the kro-generated Object CRD (see
+# publishedresource-objects.yaml). The broker verifies that this export is
+# bindable and binds it in its staging workspaces.
 apiVersion: broker.platform-mesh.io/v1alpha1
 kind: AcceptAPI
 metadata:

@@ -496,12 +496,23 @@ _provider_azure() {
     krop::register azure "$ws_admin"
 }
 
+_object_storage_migrator() {
+    local image="localhost/object-storage-migrator:latest"
+    log "Building $image"
+    docker build -t "$image" ./platform/object-storage-migrator \
+        || die "Failed to build $image"
+    log "Loading $image into kind cluster $KIND_CLUSTER"
+    kind load docker-image "$image" --name "$KIND_CLUSTER" \
+        || die "Failed to load $image into kind"
+}
+
 _setup() {
     _kubeconfig
     _kcp
     _provider_workspace
     _platform_apis
     _broker
+    _object_storage_migrator
     _floci # deploy floci instances in the kind cluster
     # Path B (the decided architecture): krop-controller per provider workspace,
     # blueprint-resident realization, no api-syncagent.

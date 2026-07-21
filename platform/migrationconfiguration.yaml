@@ -1,0 +1,60 @@
+apiVersion: coord.broker.platform-mesh.io/v1alpha1
+kind: MigrationConfiguration
+metadata:
+  name: migrate-object-storage
+spec:
+  from:
+    group: storage.example.io
+    version: v1alpha1
+    kind: ObjectStorage
+  to:
+    group: storage.example.io
+    version: v1alpha1
+    kind: ObjectStorage
+  stages:
+    - name: copy
+      preconditions:
+        # TODO need to define the "healthy" status
+        - to.status.status == "Available"
+      successConditions:
+        - has(dump.status.succeeded) && dump.status.succeeded >= 1
+      templates:
+        dump:
+          apiVersion: batch/v1
+          kind: Job
+          spec:
+            backoffLimit: 10
+            template:
+              spec:
+                restartPolicy: OnFailure
+                # The secrets are mounted into the job container, the
+                # script in object-storage-migrator inspects the mounts
+                # to pull the correct credentials.
+                volumes:
+                  - name: origin-creds
+                    secret:
+                      secretName: from-${from.status.relatedResources.credentials.name}
+                  - name: destination-creds
+                    secret:
+                      secretName: to-${to.status.relatedResources.credentials.name}
+                containers:
+                  - name: copy
+                    # from ./platform/object-storage-migrator
+                    image: localhost/object-storage-migrator:latest
+                    volumeMounts:
+                      - name: origin-creds
+                        mountPath: /creds/origin
+                        readOnly: true
+                      - name: destination-creds
+                        mountPath: /creds/destination
+                        readOnly: true
+                    env:
+                      - name: ORIGIN_URI
+                        value: ${from.status.url}
+                      - name: DESTINATION_URI
+                        value: ${to.status.url}
+                      # Bucket = host part of status.url (s3://bucket -> bucket).
+                      - name: ORIGIN_PATH
+                        value: ${from.status.url.substring(from.status.url.indexOf('://') + 3)}
+                      - name: DESTINATION_PATH
+                        value: ${to.status.url.substring(to.status.url.indexOf('://') + 3)}

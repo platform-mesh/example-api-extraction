@@ -170,14 +170,61 @@ _consumer() {
         ./consumer/order-object.yaml
 }
 
+_kro() {
+    local provider="$1"
+    local ws_path="$2"
+    local ws_admin="$3"
+    shift 3
+
+    log "Installing the kro CRDs into $ws_path"
+    kubectl apply --kubeconfig "$ws_admin" \
+        -f "https://raw.githubusercontent.com/kubernetes-sigs/kro/main/helm/crds/kro.run_resourcegraphdefinitions.yaml"
+
+    log "Create in-cluster kubeconfig for kro targeting the workspace"
+    local ws_incluster="$kubeconfigs/workspaces/${provider}.kubeconfig"
+    kcp::kubeconfig::workspace "$kcp_admin" "$ws_incluster" "$ws_path" "$PM_KCP_INCLUSTER"
+
+    log "Installing kro for the $provider provider workspace"
+    helm::install::kro::workspace "$kind_platform" \
+        "kro-${provider}" \
+        "$ws_incluster" \
+        "kro-${provider}-system" \
+        "kro-kubeconfig"
+
+    kubectl::wait "$kind_platform" \
+        deployment/kro-${provider} \
+        "kro-${provider}-system" \
+        condition=Available
+}
+
+# _provider_X creates the provider's kcp workspace, then wires kro to it.
+_provider_gcp() {
+    local ws_admin="$kubeconfigs/workspaces/gcp.admin.kubeconfig"
+    kcp::create_workspace "$kcp_admin" "$ws_admin" "gcp"
+    _kro gcp root:gcp "$ws_admin"
+}
+
+_provider_aws() {
+    local ws_admin="$kubeconfigs/workspaces/aws.admin.kubeconfig"
+    kcp::create_workspace "$kcp_admin" "$ws_admin" "aws"
+    _kro aws root:aws "$ws_admin"
+}
+
+_provider_azure() {
+    local ws_admin="$kubeconfigs/workspaces/azure.admin.kubeconfig"
+    kcp::create_workspace "$kcp_admin" "$ws_admin" "azure"
+    _kro azure root:azure "$ws_admin"
+}
+
 _setup() {
     _kubeconfig
     _kcp
     _provider_workspace
     _platform_apis
     _broker
-    # Providers (gcp/aws) + consumer order skipped for now — this brings up the
-    # broker and registers the generic Object API in the marketplace.
+    _provider_gcp
+    _provider_aws
+    _provider_azure
     log "Setup complete. The resource-broker provider and its Object API are"
     log "registered. Check the marketplace, or:"
     log "  kubectl --kubeconfig $ws_provider get apiexports,contentconfigurations,providermetadatas"

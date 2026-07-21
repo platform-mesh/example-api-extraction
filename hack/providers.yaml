@@ -1,0 +1,20 @@
+# Backends for the S3 vendor operator (cmd/, --providers-file).
+#
+# One backend: the floci-aws S3 emulator (kind/manifests/floci-aws.yaml,
+# https://floci.io - image floci/floci:latest, port 4566, LocalStack-
+# compatible fake credentials, no cloud account needed).
+#
+# Pointing at REAL AWS S3 instead is only a change to this file:
+# endpoint https://s3.<region>.amazonaws.com plus real credentials.
+#
+# endpoint:          reachable from the operator process (developer machine,
+#                    through the `task forward` port-forward)
+# internalEndpoint:  reachable from pods inside the kind cluster
+defaultProvider: aws
+providers:
+  aws:
+    endpoint: http://127.0.0.1:4566
+    internalEndpoint: http://floci-aws.floci-aws.svc.cluster.local:4566
+    accessKey: test
+    secretKey: test
+    region: de-boe-1

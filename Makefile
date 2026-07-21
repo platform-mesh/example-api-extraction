@@ -33,3 +33,31 @@ mv $(1) $(1)-$(3) ;\
 } ;\
 ln -sf $(1)-$(3) $(1)
 endef
+
+## ---------------------------------------------------------------------------
+## Workflow targets for the simple-bucket example (see hack/run.bash;
+## `task <name>` from Taskfile.yml is equivalent).
+.PHONY: run-all translation setup provider example status crossplane \
+        rgd-gcp rgd-s3 provider-gcp provider-gcp-setup provider-gcp-example \
+        provider-gcp-translation forward cleanup destroy build
+
+run-all: ; ./hack/run.bash all
+translation: ; ./hack/run.bash translation
+setup: ; ./hack/run.bash setup
+provider: ; ./hack/run.bash provider
+example: ; ./hack/run.bash example
+status: ; ./hack/run.bash status
+crossplane: ; ./hack/run.bash crossplane
+rgd-gcp: ; ./hack/run.bash rgd:gcp
+rgd-s3: ; ./hack/run.bash rgd:s3
+provider-gcp: ; ./hack/run.bash provider-gcp
+provider-gcp-setup: ; ./hack/run.bash provider-gcp:setup
+provider-gcp-example: ; ./hack/run.bash provider-gcp:example
+provider-gcp-translation: ; ./hack/run.bash provider-gcp:translation
+forward: ; ./hack/run.bash forward
+cleanup: ; ./hack/run.bash cleanup
+destroy: ; ./hack/run.bash destroy
+
+build:
+	cd api && go build ./... && go vet ./...
+	go build ./... && go vet ./...

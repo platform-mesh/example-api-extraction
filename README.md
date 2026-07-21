@@ -20,3 +20,13 @@ The consumer's binding and order are in `consumer/`.
 `kind/manifests/` holds the floci fake-cloud storage backends.
 
 The overarching play-by-play resource changes are documented in `DEMO.md`.
+
+## Runnable example
+
+[`examples/simple-bucket/`](examples/simple-bucket/) is a verified
+end-to-end run of the extraction chain on one kind cluster and one kcp
+workspace: a generic `Bucket` order (storage.opendefense.cloud) is
+translated by a kro RGD into a vendor S3 resource and fulfilled on the
+floci S3 emulator - credentials Secret and status flow back to the
+consumer. `task all` (or `make run-all`) drives everything; see the example
+README.

@@ -1,0 +1,18 @@
+# The consumer's view: order object storage through the generic
+# storage.opendefense.cloud API. Nothing in here is vendor-specific -
+# the platform decides how to fulfill it (in this PoC: the S3 operator
+# against the floci-aws emulator).
+#
+# Apply into the kcp workspace:
+#   kubectl --kubeconfig kubeconfigs/workspaces/storage.kubeconfig \
+#       apply -f examples/simple-bucket/bucket.yaml
+apiVersion: storage.opendefense.cloud/v1alpha1
+kind: Bucket
+metadata:
+  name: example-object-storage
+  namespace: default
+spec:
+  bucketName: my-bucket
+  bucketSize: 5
+  description: my-bucket-for-backups
+  storageClass: Standard

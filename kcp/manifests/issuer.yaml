@@ -1,0 +1,7 @@
+# Self-signed issuer for the kcp certificates (PoC only).
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}

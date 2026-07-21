@@ -2,7 +2,10 @@ module github.com/platform-mesh/example-api-extraction/api
 
 go 1.26.0
 
-require k8s.io/apimachinery v0.36.2
+require (
+	k8s.io/apimachinery v0.36.2
+	sigs.k8s.io/controller-runtime v0.24.1
+)
 
 require (
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect

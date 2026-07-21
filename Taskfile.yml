@@ -1,0 +1,88 @@
+# Task runner entry points (https://taskfile.dev). Every task is a thin
+# wrapper around hack/run.bash so that `make <target>` and plain
+# `hack/run.bash <cmd>` behave identically - use whichever you prefer.
+version: "3"
+
+tasks:
+  default:
+    desc: List all tasks
+    cmds: [task --list]
+    silent: true
+
+  all:
+    desc: "EVERYTHING unattended: setup, operator, example bucket, results"
+    cmds: [./hack/run.bash all]
+
+  translation:
+    desc: "Show the bucket at every layer: generic API -> vendor API -> storage"
+    cmds: [./hack/run.bash translation]
+
+  setup:
+    desc: "Create kind cluster with kcp (1 workspace), kro, floci-aws, api-syncagent"
+    cmds: [./hack/run.bash setup]
+
+  provider:
+    desc: "Run the S3 vendor operator locally (blocks - use a second terminal)"
+    cmds: [./hack/run.bash provider]
+
+  example:
+    desc: "Order a Bucket through the generic API and show the result"
+    cmds: [./hack/run.bash example]
+
+  status:
+    desc: "Show the consumer-side view of the Bucket"
+    cmds: [./hack/run.bash status]
+
+  crossplane:
+    desc: "Install Crossplane + floci-gcp emulator + upbound provider-gcp-storage"
+    cmds: [./hack/run.bash crossplane]
+
+  rgd:gcp:
+    desc: "Switch translation to GCP/Crossplane (destroys existing Buckets)"
+    cmds: [./hack/run.bash rgd:gcp]
+
+  rgd:s3:
+    desc: "Switch translation back to S3/floci-aws (destroys existing Buckets)"
+    cmds: [./hack/run.bash rgd:s3]
+
+  provider-gcp:
+    desc: "EVERYTHING for the REAL provider-gcp controller (../provider-gcp) against floci-gcp"
+    cmds: [./hack/run.bash provider-gcp]
+
+  provider-gcp:setup:
+    desc: "Swap to the real Bucket schema, build+deploy provider-gcp + floci-gcp"
+    cmds: [./hack/run.bash provider-gcp:setup]
+
+  provider-gcp:example:
+    desc: "Order a Bucket and validate it against floci-gcp"
+    cmds: [./hack/run.bash provider-gcp:example]
+
+  provider-gcp:translation:
+    desc: "Re-print the provider-gcp result at every layer"
+    cmds: [./hack/run.bash provider-gcp:translation]
+
+  forward:
+    desc: "Restart all port-forwards (kcp, floci-aws, floci-gcp)"
+    cmds: [./hack/run.bash forward]
+
+  generate:
+    desc: "Regenerate deepcopy code and CRDs from the api/ module"
+    dir: api
+    cmds:
+      - go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.21.0
+        object:headerFile=/dev/null paths=./...
+        crd output:crd:artifacts:config=../config/crd
+
+  build:
+    desc: "Build and vet both Go modules"
+    cmds:
+      - cd api && go build ./... && go vet ./...
+      - go build ./... && go vet ./...
+
+  cleanup:
+    desc: "Remove example resources (cluster stays up)"
+    cmds: [./hack/run.bash cleanup]
+
+  destroy:
+    desc: "Delete the kind cluster and kubeconfigs"
+    cmds: [./hack/run.bash destroy]

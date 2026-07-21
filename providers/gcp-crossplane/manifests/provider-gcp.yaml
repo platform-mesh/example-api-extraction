@@ -1,0 +1,37 @@
+# Crossplane provider for GCP object storage, used by the GCP translation
+# (rgd-bucket.yaml in this directory). Installed by `task crossplane`.
+#
+# The DeploymentRuntimeConfig points the provider's embedded Terraform at
+# the floci-gcp emulator (kind/manifests/floci-gcp.yaml (upstream)) so no real GCP account is needed.
+# EXPERIMENTAL: endpoint override via GOOGLE_STORAGE_CUSTOM_ENDPOINT is a
+# Terraform google-provider convention; validate against the installed
+# provider version. For real GCP, remove runtimeConfigRef+env and use the
+# Secret-based ProviderConfig documented in providerconfig.yaml.
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-gcp-storage
+spec:
+  # Check https://marketplace.upbound.io/providers/upbound/provider-gcp-storage
+  # for the current version before bumping.
+  package: xpkg.upbound.io/upbound/provider-gcp-storage:v1.8.0
+  runtimeConfigRef:
+    name: gcp-emulator
+---
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: gcp-emulator
+spec:
+  deploymentTemplate:
+    spec:
+      selector: {}
+      template:
+        spec:
+          containers:
+            - name: package-runtime
+              env:
+                # Terraform google provider: route Cloud Storage API calls
+                # to the floci-gcp emulator instead of googleapis.com.
+                - name: GOOGLE_STORAGE_CUSTOM_ENDPOINT
+                  value: http://floci-gcp.floci-gcp.svc.cluster.local:4588/storage/v1/

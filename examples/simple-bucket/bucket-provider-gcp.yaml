@@ -1,0 +1,18 @@
+# Same order as bucket.yaml, but for the REAL provider-gcp path
+# (task provider-gcp): the vendored SDK's storageClass enum is lowercase
+# (standard/nearline/coldline/archive), unlike our own generic schema in
+# api/opendefense/v1alpha1 (Standard/Nearline/Coldline/Archive) used by the
+# kro-based paths. This divergence is real - discovered by actually running
+# task provider-gcp against the real CRD - and is one reason
+# api/opendefense/v1alpha1 is our own approximation of the reference API,
+# not a drop-in replacement for the vendored SDK.
+apiVersion: storage.opendefense.cloud/v1alpha1
+kind: Bucket
+metadata:
+  name: example-object-storage
+  namespace: default
+spec:
+  bucketName: my-bucket
+  region: de-boe-1
+  storageClass: standard
+  description: my-bucket-for-backups

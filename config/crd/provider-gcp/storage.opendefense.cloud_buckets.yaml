@@ -1,0 +1,383 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: buckets.storage.opendefense.cloud
+spec:
+  group: storage.opendefense.cloud
+  names:
+    categories:
+    - cloud
+    - storage
+    kind: Bucket
+    listKind: BucketList
+    plural: buckets
+    singular: bucket
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.bucketId
+      name: BucketID
+      type: string
+    - jsonPath: .spec.bucketSize
+      name: SizeGB
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Bucket defines an S3-compatible object storage bucket.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: BucketSpec defines the desired state of a Bucket.
+            properties:
+              bucketName:
+                description: BucketName is the name of the bucket.
+                example: my-bucket
+                maxLength: 63
+                type: string
+              bucketPolicy:
+                description: BucketPolicy defines policies of the bucket resource.
+                properties:
+                  lifecyclePolicy:
+                    description: LifecyclePolicy defines a custom lifecycle policy
+                      set on the bucket.
+                    properties:
+                      enabled:
+                        default: false
+                        description: Defines whether the user wants to enable custom
+                          lifecycle policy on the bucket.
+                        example: false
+                        type: boolean
+                      lifecycleRules:
+                        description: |-
+                          LifecycleRules define one or more lifecycle configuration rules that
+                          can take expiration action on objects in the bucket.
+                        properties:
+                          expiration:
+                            description: Expiration defines expiration behavior for
+                              objects in current version.
+                            properties:
+                              date:
+                                description: Date defines the specific date when the
+                                  objects should be deleted.
+                                example: "2026-03-17"
+                                items:
+                                  format: date-time
+                                  type: string
+                                maxItems: 100
+                                type: array
+                                x-kubernetes-list-type: atomic
+                              days:
+                                description: Days defines the number of days this
+                                  object is subject to the rule.
+                                example: 30
+                                format: int32
+                                maximum: 36500
+                                minimum: 0
+                                type: integer
+                            type: object
+                          filter:
+                            description: Filter defines the filter that can be set
+                              on lifecycle rule.
+                            properties:
+                              prefixFilter:
+                                description: |-
+                                  PrefixFilter matches objects with provided prefix. Empty string means
+                                  apply to all objects in the bucket.
+                                example: my-prefix
+                                maxLength: 1024
+                                type: string
+                              tagFilter:
+                                additionalProperties:
+                                  type: string
+                                description: |-
+                                  TagFilter matches objects with provided tags. The tag on object must
+                                  match both the key and value exactly.
+                                example:
+                                  key: value
+                                maxProperties: 50
+                                type: object
+                            type: object
+                          id:
+                            description: Id is a unique identifier for the rule.
+                            example: ExpireAfter30Days
+                            maxLength: 255
+                            type: string
+                          noncurrentExpiration:
+                            description: |-
+                              NoncurrentExpiration defines expiration behavior for objects in
+                              noncurrent version.
+                            properties:
+                              noncurrentDays:
+                                description: |-
+                                  NoncurrentDays defines the days an object is noncurrent before
+                                  lifecycle rules takes the action.
+                                example: 30
+                                format: int32
+                                maximum: 36500
+                                minimum: 0
+                                type: integer
+                            type: object
+                          status:
+                            description: |-
+                              Status defines the lifecycle rule and indicates whether this rule takes
+                              action or not. Only Enabled rule would take effect.
+                            type: boolean
+                        type: object
+                    type: object
+                    x-kubernetes-validations:
+                    - message: lifecycleRules.id is required when lifecycle policy
+                        is enabled
+                      rule: '!self.enabled || (has(self.lifecycleRules) && has(self.lifecycleRules.id)
+                        && size(self.lifecycleRules.id) > 0)'
+                  lockingPolicy:
+                    description: |-
+                      LockingPolicy defines if object versioning is enabled and all objects
+                      stored in the bucket will be subject to this policy.
+                    properties:
+                      defaultObjectRetentionDays:
+                        description: |-
+                          DefaultObjectRetentionDays defines the minimum number of days that each
+                          version of every object will be retained.
+                        example: 30
+                        format: int32
+                        maximum: 36500
+                        minimum: 0
+                        type: integer
+                      enabled:
+                        description: Defines whether the user wants to enable object
+                          versioning on the bucket.
+                        example: true
+                        type: boolean
+                    type: object
+                    x-kubernetes-validations:
+                    - message: defaultObjectRetentionDays must be greater than 0 when
+                        locking is enabled
+                      rule: '!self.enabled || (has(self.defaultObjectRetentionDays)
+                        && self.defaultObjectRetentionDays > 0)'
+                type: object
+              bucketSize:
+                default: 20
+                description: BucketSize defines the size (in GB) of the bucket.
+                example: 50
+                format: int32
+                maximum: 65536
+                minimum: 1
+                type: integer
+              description:
+                description: Description of bucket contents.
+                example: my-bucket-for-backups
+                maxLength: 256
+                type: string
+              encryption:
+                default: false
+                description: Encryption enables server-side encryption at rest.
+                example: true
+                type: boolean
+              providerConfig:
+                description: ProviderConfig holds optional, provider-specific Bucket
+                  settings.
+                example:
+                  key: value
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              region:
+                description: Region defines the region where the bucket is stored.
+                example: de-boe-1
+                maxLength: 64
+                type: string
+              storageClass:
+                default: standard
+                description: |-
+                  StorageClass defines how objects in the bucket are stored and determines
+                  the SLA and the cost of storage.
+                enum:
+                - standard
+                - nearline
+                - coldline
+                - archive
+                maxLength: 64
+                type: string
+            required:
+            - bucketName
+            type: object
+          status:
+            description: BucketStatus defines the observed state of a Bucket.
+            properties:
+              allocatedRegion:
+                description: AllocatedRegion is the region where the bucket is stored.
+                maxLength: 64
+                type: string
+              bucketId:
+                description: BucketID is the unique identifier assigned to the bucket.
+                example: obs-e2f5g8
+                maxLength: 256
+                type: string
+              bucketSecret:
+                description: |-
+                  BucketSecret contains the secret name where the Bucket Credentials
+                  are stored.
+                maxLength: 253
+                type: string
+              conditions:
+                description: Conditions represent the latest available observations.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              encryptionStatus:
+                description: Encryption is the status of the encryption on the bucket.
+                properties:
+                  keyRef:
+                    description: |-
+                      KeyRef references the key which is used as the default key to encrypt
+                      objects in the bucket.
+                    items:
+                      description: ObjectReference contains enough information to
+                        let you inspect or modify the referred object.
+                      properties:
+                        apiVersion:
+                          description: API version of the referent.
+                          type: string
+                        fieldPath:
+                          description: |-
+                            If referring to a piece of an object instead of an entire object, this string
+                            should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
+                            For example, if the object reference is to a container within a pod, this would take on a value like:
+                            "spec.containers{name}" (where "name" refers to the name of the container that triggered
+                            the event) or if no container name is specified "spec.containers[2]" (container with
+                            index 2 in this pod). This syntax is chosen only to have some well-defined way of
+                            referencing a part of an object.
+                          type: string
+                        kind:
+                          description: |-
+                            Kind of the referent.
+                            More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                          type: string
+                        name:
+                          description: |-
+                            Name of the referent.
+                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace of the referent.
+                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+                          type: string
+                        resourceVersion:
+                          description: |-
+                            Specific resourceVersion to which this reference is made, if any.
+                            More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
+                          type: string
+                        uid:
+                          description: |-
+                            UID of the referent.
+                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
+                          type: string
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    maxItems: 10
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  type:
+                    description: Type defines the type of encryption to be used for
+                      the bucket.
+                    maxLength: 64
+                    type: string
+                type: object
+              endpoint:
+                description: Endpoint is the S3-compatible endpoint URL.
+                example: https://my-bucket.s3.provider.io
+                maxLength: 2048
+                type: string
+              providerStatus:
+                description: |-
+                  ProviderStatus holds provider-specific observed state that has no
+                  generic representation.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+            required:
+            - bucketId
+            - conditions
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

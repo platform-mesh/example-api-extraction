@@ -1,0 +1,76 @@
+# Translation: generic Bucket (storage.opendefense.cloud) -> Crossplane GCP
+# managed resource (Bucket.storage.gcp.upbound.io). Crossplane then talks to
+# the (real or simulated) GCP API.
+#
+#   Bucket (generic)  --kro-->  Bucket (GCP MR)  --crossplane-->  GCS
+#
+# ALTERNATIVE to ../../minio/manifests/rgd-bucket.yaml: only one RGD may define the Bucket kind on
+# a cluster - apply this file INSTEAD of ../../minio/manifests/rgd-bucket.yaml (task rgd:gcp).
+#
+# Prerequisites (task crossplane):
+#   - Crossplane + upbound provider-gcp-storage installed
+#   - a ProviderConfig named "default" (providers/gcp-crossplane/manifests/)
+#   - either real GCP credentials or the fake-gcs-server emulator
+#     (kind/manifests/floci-gcp.yaml, wired via the DeploymentRuntimeConfig in provider-gcp.yaml)
+#
+# The schema block is identical to ../../minio/manifests/rgd-bucket.yaml - the consumer API never
+# changes, only the vendor mapping below it does.
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: buckets.storage.opendefense.cloud
+spec:
+
+  schema:
+    group: storage.opendefense.cloud
+    apiVersion: v1alpha1
+    kind: Bucket
+    spec:
+      bucketName: string | required=true
+      bucketSize: integer | default=20
+      description: string
+      encryption: boolean | default=false
+      region: string
+      storageClass: string | default="Standard"
+      providerConfig:
+        provider: string | default="gcp"
+    status:
+      bucketId: ${schema.spec.bucketName}
+      allocatedRegion: ${gcsbucket.status.atProvider.location}
+      # GCS buckets are always reachable under the well-known URL.
+      endpoint: ${"https://storage.googleapis.com/" + schema.spec.bucketName}
+      conditions: ${gcsbucket.status.conditions}
+      # NOTE: bucketSecret is not populated by this translation. GCS
+      # credentials (HMAC keys / service accounts) are managed outside of
+      # the bucket object; extending this RGD with a
+      # storage.gcp.upbound.io HMACKey + a Secret is the documented
+      # exercise in docs/DEVELOPMENT.md.
+
+  resources:
+
+    # Crossplane managed resources are cluster-scoped, so the GCS bucket
+    # name (globally unique in GCP anyway) is used as the object name.
+    - id: gcsbucket
+      template:
+        apiVersion: storage.gcp.upbound.io/v1beta1
+        kind: Bucket
+        metadata:
+          name: ${schema.spec.bucketName}
+          annotations:
+            # Pin the external name so Crossplane does not generate one.
+            crossplane.io/external-name: ${schema.spec.bucketName}
+        spec:
+          forProvider:
+            # The generic region field maps to a GCS location; empty means
+            # let the translation pick a sane default.
+            location: '${schema.spec.region == "" ? "EU" : schema.spec.region}'
+            # The generic storage classes are modeled after the GCS ones,
+            # so this mapping is a plain upper-casing.
+            storageClass: >-
+              ${schema.spec.storageClass == "Nearline" ? "NEARLINE"
+              : schema.spec.storageClass == "Coldline" ? "COLDLINE"
+              : schema.spec.storageClass == "Archive" ? "ARCHIVE"
+              : "STANDARD"}
+            uniformBucketLevelAccess: true
+          providerConfigRef:
+            name: default

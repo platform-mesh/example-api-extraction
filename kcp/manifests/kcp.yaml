@@ -1,0 +1,106 @@
+# kcp control plane, managed by the kcp-operator (helm chart, installed by
+# `task setup`). Adapted from platform-mesh/resource-broker
+# examples/kcp-certs/platform/kcp.yaml - see there for the original.
+#
+# Topology: one RootShard + one FrontProxy. Both are exposed as NodePorts so
+# that pods (api-syncagent) and the developer machine (via port-forward) can
+# reach kcp.
+apiVersion: operator.kcp.io/v1alpha1
+kind: RootShard
+metadata:
+  name: root
+spec:
+  image:
+    tag: v0.30.0
+  # NodePort service exposing the root shard; api-syncagent talks to this.
+  shardBaseURL: https://api-extraction-control-plane:32111
+  # The external address is the front proxy, exposed via NodePort below.
+  external:
+    hostname: api-extraction-control-plane
+    port: 32443
+  certificates:
+    issuerRef:
+      group: cert-manager.io
+      kind: Issuer
+      name: selfsigned
+  cache:
+    embedded:
+      enabled: true
+  etcd:
+    endpoints:
+      - http://kcp-etcd-client.default.svc.cluster.local:2379
+---
+# Root shard NodePort. In production this would be a load balancer/ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: root-kcp-nodeport
+  namespace: default
+spec:
+  type: NodePort
+  ports:
+    - appProtocol: https
+      name: https
+      port: 6443
+      protocol: TCP
+      targetPort: 6443
+      nodePort: 32111
+  selector:
+    app.kubernetes.io/component: rootshard
+    app.kubernetes.io/instance: root
+    app.kubernetes.io/managed-by: kcp-operator
+    app.kubernetes.io/name: kcp
+---
+apiVersion: operator.kcp.io/v1alpha1
+kind: FrontProxy
+metadata:
+  name: frontproxy
+spec:
+  rootShard:
+    ref:
+      name: root
+  certificateTemplates:
+    server:
+      spec:
+        dnsNames:
+          - localhost
+        ipAddresses:
+          - 127.0.0.1
+---
+# Front proxy NodePort - the "public" kcp endpoint.
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontproxy-front-proxy-nodeport
+  namespace: default
+spec:
+  type: NodePort
+  ports:
+    - appProtocol: https
+      name: https
+      port: 6443
+      protocol: TCP
+      targetPort: 6443
+      nodePort: 32443
+  selector:
+    app.kubernetes.io/component: front-proxy
+    app.kubernetes.io/instance: frontproxy
+    app.kubernetes.io/managed-by: kcp-operator
+    app.kubernetes.io/name: kcp
+---
+# Admin kubeconfig (via front proxy) - extracted to kubeconfigs/ by the
+# setup script.
+apiVersion: operator.kcp.io/v1alpha1
+kind: Kubeconfig
+metadata:
+  name: kubeconfig-kcp-admin
+spec:
+  username: kcp-admin
+  groups:
+    - system:kcp:admin
+  validity: 8766h
+  secretRef:
+    name: admin-kubeconfig
+  target:
+    frontProxyRef:
+      name: frontproxy

@@ -1,0 +1,51 @@
+# api-syncagent configuration: publish the Bucket API from the kind cluster
+# into the kcp workspace, and sync the credentials Secret back to consumers.
+#
+# The agent watches the CRD buckets.storage.opendefense.cloud on the kind
+# cluster (created there by the kro RGD), generates an APIResourceSchema +
+# APIExport ("buckets") in the kcp workspace, and syncs instances in both
+# directions. The "related" entry makes the credentials Secret - found via
+# status.bucketSecret.name on the provider side - appear next to the Bucket
+# in the consumer's workspace/namespace.
+apiVersion: syncagent.kcp.io/v1alpha1
+kind: PublishedResource
+metadata:
+  name: buckets.storage.opendefense.cloud
+spec:
+  resource:
+    kind: Bucket
+    apiGroup: storage.opendefense.cloud
+    versions: [v1alpha1]
+  related:
+    - identifier: credentials
+      origin: service
+      kind: Secret
+      object:
+        reference:
+          path: status.bucketSecret.name
+---
+# RBAC for the agent's service account on the published resource.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: api-syncagent-storage:buckets
+rules:
+  - apiGroups: [storage.opendefense.cloud]
+    resources: [buckets]
+    verbs: [get, list, watch, create, update, delete, patch]
+  - apiGroups: [storage.opendefense.cloud]
+    resources: [buckets/status]
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: api-syncagent-storage:buckets
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: api-syncagent-storage:buckets
+subjects:
+  - kind: ServiceAccount
+    name: api-syncagent-storage
+    namespace: default

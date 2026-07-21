@@ -6,24 +6,13 @@ a consumer orders against one generic API, and the
 routes the order to a matching provider by capability/policy — the "API
 extraction" idea made concrete.
 
-## Examples
+## Structure
 
-### [`examples/broker-buckets`](examples/broker-buckets)
+The example providers live in `providers/`, one cloud provider per directory.
+Resource installed into the provider workspace go into `providers/<provider>/manifests/`.
 
-One generic type `storage.generic.platform-mesh.io/Object` (a bucket), two
-providers realized entirely locally against
-[floci](https://floci.io/) emulators — **GCP → floci-gcp** (GCS) and
-**AWS → floci-aws** (S3) — on a single `kind` cluster. The broker routes by
-`region` (`eu` → GCP, `us` → AWS) and performs a live **migration** on region
-change. Provider realization uses **kro** `ResourceGraphDefinition`s (no
-Crossplane), mirroring the upstream `broker-postgres` / `broker-certificates`
-examples.
+The broker and platform setup happens in `platform/`.
+The example resources deployed for the consumer are in `comsumer/`.
 
-Status: scaffold / runbook — see the example README for the step-by-step and the
-open verification points before running.
-
-## Context
-
-Prepared for the IPCEI-CIS / Apeiro hackathon (Potsdam, 2026-07), topic
-"Standardized IaaS APIs". The Go module skeleton (`./`, `./api`) is reserved for
-shared types / e2e tooling as the examples grow.
+Each provider documents its own setup.
+The overarching play-by-play resource changes are documented in `DEMO.md`.

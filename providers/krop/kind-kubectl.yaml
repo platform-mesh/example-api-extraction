@@ -1,0 +1,18 @@
+# https://github.com/opendefensecloud/krop-controller/blob/main/docs/permissions.md#minting-the-kubeconfig-identity
+apiVersion: operator.kcp.io/v1alpha1
+kind: Kubeconfig
+metadata:
+  name: krop-controller-kubeconfig
+  namespace: platform-mesh-system
+spec:
+  username: "system:serviceaccount:krop-system:krop-controller"   # == ${SA_IDENTITY}
+  groups:
+    - "system:authenticated"
+    - "system:serviceaccounts"
+    - "system:serviceaccounts:krop-system"
+  validity: 8766h
+  secretRef:
+    name: krop-controller-kubeconfig
+  target:
+    rootShardRef:
+      name: root

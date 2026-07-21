@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resource-broker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: resource-broker
+  template:
+    metadata:
+      labels:
+        app: resource-broker
+    spec:
+      serviceAccountName: resource-broker
+      containers:
+        - name: resource-broker
+          image: broker
+          args:
+            - -kubeconfig=/kubeconfig/kubeconfig
+            - -kcp-kubeconfig=/kubeconfig/kubeconfig
+            - -compute-kubeconfig=/compute-kubeconfig/kubeconfig
+            - -acceptapi=acceptapis
+            - -requeue-interval=1s
+          volumeMounts:
+            - name: kubeconfig
+              mountPath: /kubeconfig
+              readOnly: true
+            - name: compute-kubeconfig
+              mountPath: /compute-kubeconfig
+              readOnly: true
+      volumes:
+        - name: kubeconfig
+          secret:
+            secretName: kcp-kubeconfig
+        - name: compute-kubeconfig
+          configMap:
+            name: compute-kubeconfig

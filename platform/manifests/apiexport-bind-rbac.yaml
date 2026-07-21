@@ -1,0 +1,25 @@
+# Grants the `bind` verb on the objectstorages APIExport so account users can
+# bind it (the marketplace "Enable" action). Applied into the provider
+# workspace. Without this the bind is denied and Enable silently does nothing.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: objectstorages-apiexport-bind
+rules:
+  - apiGroups: [apis.kcp.io]
+    resources: [apiexports]
+    verbs: [bind]
+    resourceNames: [objectstorages]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: objectstorages-apiexport-bind
+subjects:
+  - kind: Group
+    name: system:authenticated
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: objectstorages-apiexport-bind
+  apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,109 @@
+# ContentConfiguration: renders the ObjectStorage API in the Platform Mesh
+# portal using the built-in generic-list-view / generic-detail-view web
+# components (no separate portal micro-frontend). Pattern from
+# github.com/platform-mesh/contrib-examples msp-postgres-localsetup.
+#
+# metadata.labels.ui.platform-mesh.io/content-for MUST equal the APIExport name
+# (objectstorages) so the portal projects this into accounts that bound it.
+apiVersion: ui.platform-mesh.io/v1alpha1
+kind: ContentConfiguration
+metadata:
+  name: objectstorages-ui
+  labels:
+    ui.platform-mesh.io/entity: core_platform-mesh_io_account
+    ui.platform-mesh.io/content-for: objectstorages
+spec:
+  inlineConfiguration:
+    contentType: json
+    # GraphQL identifiers are the underscored form of the API group
+    # (storage.example.io -> storage_example_io).
+    content: |-
+      {
+        "name": "objectstorages",
+        "luigiConfigFragment": {
+          "data": {
+            "nodes": [
+              {
+                "pathSegment": "storage_example_io_objectstorages",
+                "navigationContext": "storage_example_io_objectstorages",
+                "label": "Object Storage",
+                "icon": "database",
+                "order": 850,
+                "entityType": "main.core_platform-mesh_io_account",
+                "keepSelectedForChildren": true,
+                "url": "/assets/platform-mesh-portal-ui-wc.js#generic-list-view",
+                "webcomponent": { "selfRegistered": true },
+                "context": {
+                  "resourceDefinition": {
+                    "apiGroup": "storage_example_io",
+                    "version": "v1alpha1",
+                    "entity": "ObjectStorage",
+                    "entityCollection": "ObjectStorages",
+                    "scope": "Namespaced",
+                    "namespace": null,
+                    "readyCondition": {
+                      "jsonPathExpression": "status.status",
+                      "property": ["status.status"]
+                    },
+                    "ui": {
+                      "listView": {
+                        "fields": [
+                          { "label": "Name",       "property": "metadata.name" },
+                          { "label": "Namespace",  "property": "metadata.namespace" },
+                          { "label": "Region",     "property": "spec.region" },
+                          { "label": "Versioning", "property": "spec.versioning" },
+                          { "label": "Status",     "property": "status.status" },
+                          { "label": "URL",        "property": "status.url" }
+                        ]
+                      },
+                      "detailView": {
+                        "fields": [
+                          { "label": "Name",       "property": "metadata.name" },
+                          { "label": "Namespace",  "property": "metadata.namespace" },
+                          { "label": "Region",     "property": "spec.region" },
+                          { "label": "Versioning", "property": "spec.versioning" },
+                          { "label": "Status",     "property": "status.status" },
+                          { "label": "URL",        "property": "status.url" }
+                        ]
+                      },
+                      "createView": {
+                        "fields": [
+                          { "label": "Name",       "property": "metadata.name",      "required": true },
+                          { "label": "Region",     "property": "spec.region",        "required": true, "values": ["eu", "us"] },
+                          { "label": "Versioning", "property": "spec.versioning" }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "pathSegment": ":objectStorageId",
+                    "hideFromNav": true,
+                    "keepSelectedForChildren": false,
+                    "defineEntity": {
+                      "id": "storage_example_io_objectstorage",
+                      "contextKey": "objectStorageId",
+                      "graphqlEntity": {
+                        "group": "storage_example_io",
+                        "version": "v1alpha1",
+                        "kind": "ObjectStorage",
+                        "query": "{ metadata { name namespace } }"
+                      }
+                    },
+                    "context": {
+                      "accountId": ":accountId",
+                      "objectStorageId": ":objectStorageId",
+                      "resourceId": ":objectStorageId"
+                    }
+                  }
+                ]
+              }
+            ],
+            "texts": [
+              { "locale": "",   "textDictionary": { "objectstorages": "Object Storage" } },
+              { "locale": "en", "textDictionary": { "objectstorages": "Object Storage" } }
+            ]
+          }
+        }
+      }

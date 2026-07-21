@@ -1,0 +1,60 @@
+# ClusterRole for the resource-broker controller. Copied verbatim from
+# github.com/platform-mesh/platform-mesh operators/resource-broker/config/broker/rbac/role.yaml
+# (updated there by controller-gen).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: resource-broker
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - broker.platform-mesh.io
+  resources:
+  - acceptapis
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - broker.platform-mesh.io
+  resources:
+  - acceptapis/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - broker.platform-mesh.io
+  resources:
+  - acceptapis/status
+  verbs:
+  - get
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch

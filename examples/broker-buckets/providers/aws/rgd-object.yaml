@@ -1,0 +1,64 @@
+# kro ResourceGraphDefinition: AWS realization of a generic storage.Object.
+# Identical structure to the GCP RGD — only the realization target is floci-aws
+# (S3) instead of floci-gcp (GCS). That's the heart of the demo: ONE generic type,
+# two providers each with its own RGD; the broker routes by region.
+#
+# LIMIT (PoC): create-only, like the GCP RGD. See tasks/todo.md.
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: objects.storage.generic.platform-mesh.io
+spec:
+
+  schema:
+    group: storage.generic.platform-mesh.io
+    apiVersion: v1alpha1
+    kind: Object
+    spec:
+      region: string
+      versioning: boolean
+    status:
+      url: s3://${createBucket.metadata.annotations["spike.odc/bucket-name"]}
+      status: ${createBucket.status.succeeded > 0 ? "Available" : "Provisioning"}
+      conditions: ${createBucket.status.conditions}
+
+  resources:
+
+    - id: createBucket
+      readyWhen:
+        - ${createBucket.status.succeeded > 0}
+      template:
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          name: ${schema.metadata.name}-create
+          namespace: ${schema.metadata.namespace}
+          annotations:
+            spike.odc/bucket-name: ${schema.metadata.?annotations["syncagent.kcp.io/remote-object-name"].orValue(schema.metadata.name)}
+        spec:
+          backoffLimit: 6
+          template:
+            spec:
+              restartPolicy: Never
+              enableServiceLinks: false
+              containers:
+                - name: create-bucket
+                  image: amazon/aws-cli:2.31.14
+                  env:
+                    - name: BUCKET
+                      value: ${schema.metadata.?annotations["syncagent.kcp.io/remote-object-name"].orValue(schema.metadata.name)}
+                    # floci-aws ignores auth but requires creds to be set.
+                    - name: AWS_ACCESS_KEY_ID
+                      value: test
+                    - name: AWS_SECRET_ACCESS_KEY
+                      value: test
+                    - name: AWS_DEFAULT_REGION
+                      value: us-east-1
+                  command: ["/bin/sh", "-c"]
+                  args:
+                    - |
+                      set -eu
+                      echo "creating s3://${BUCKET} in floci-aws"
+                      aws --endpoint-url http://floci-aws.floci-aws.svc.cluster.local:4566 \
+                        s3api create-bucket --bucket "${BUCKET}"
+                      echo "ok"

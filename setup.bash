@@ -170,14 +170,40 @@ _consumer() {
         ./consumer/order-object.yaml
 }
 
+_kro() {
+    local provider="$1"
+    local ws_kubeconfig="$2"
+    log "Installing kro for the $provider provider workspace"
+    helm::install::kro::workspace "$kind_platform" "kro-${provider}" \
+        "$ws_kubeconfig" "kro-${provider}-system" "kro-kubeconfig"
+    kubectl::wait "$kind_platform" deployment/kro-${provider} "kro-${provider}-system" \
+        condition=Available
+}
+
+_provider_gcp() {
+    local ws_kubeconfig="$ws/${provider}.kubeconfig"
+    _kro gcp "$ws_kubeconfig"
+}
+
+_provider_aws() {
+    local ws_kubeconfig="$ws/${provider}.kubeconfig"
+    _kro aws "$ws_kubeconfig"
+}
+
+_provider_azure() {
+    local ws_kubeconfig="$ws/${provider}.kubeconfig"
+    _kro azure "$ws_kubeconfig"
+}
+
 _setup() {
     _kubeconfig
     _kcp
     _provider_workspace
     _platform_apis
     _broker
-    # Providers (gcp/aws) + consumer order skipped for now — this brings up the
-    # broker and registers the generic Object API in the marketplace.
+    _provider_gcp
+    _provider_aws
+    _provider_azure
     log "Setup complete. The resource-broker provider and its Object API are"
     log "registered. Check the marketplace, or:"
     log "  kubectl --kubeconfig $ws_provider get apiexports,contentconfigurations,providermetadatas"

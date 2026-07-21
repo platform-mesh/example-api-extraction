@@ -310,6 +310,30 @@ helm::install::kro() {
         "$@"
 }
 
+helm::install::kro::workspace() {
+    local host_kubeconfig="$1"
+    local release="$2"
+    local ws_kubeconfig="$3"
+    local namespace="$4"
+    local secret_name="$5"
+    shift 5
+
+    kubectl --kubeconfig "$host_kubeconfig" create namespace "$namespace" \
+        --dry-run=client -o yaml \
+        | kubectl --kubeconfig "$host_kubeconfig" apply -f - \
+        || die "Failed to create namespace $namespace"
+    kubectl create secret generic "$secret_name" --namespace="$namespace" \
+        --dry-run=client -o yaml --from-file=kubeconfig="$ws_kubeconfig" \
+        | kubectl::apply "$host_kubeconfig" "-"
+
+    helm::install "$host_kubeconfig" "$release" \
+        oci://registry.k8s.io/kro/charts/kro \
+        --version=0.5.1 \
+        --namespace "$namespace" \
+        --skip-crds \
+        "$@"
+}
+
 helm::install::cnpg() {
     local kubeconfig="$1"
     shift 1

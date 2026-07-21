@@ -168,6 +168,13 @@ _platform_apis() {
         ./config/coordbroker/crd/coord.broker.platform-mesh.io_migrationconfigurations.yaml \
         ./config/coordbroker/crd/coord.broker.platform-mesh.io_migrations.yaml \
         ./config/coordbroker/crd/coord.broker.platform-mesh.io_stagingworkspaces.yaml
+    # The broker's coordination provider dies permanently if these kinds are not
+    # discoverable when it starts (greenfield race) — gate on Established.
+    for crd in assignments migrationconfigurations migrations stagingworkspaces; do
+        KUBECONFIG="$ws_provider" kubectl wait --for=condition=Established \
+            "crd/${crd}.coord.broker.platform-mesh.io" --timeout="$timeout" \
+            || die "coordination CRD $crd not established"
+    done
 
     log "Creating AcceptAPI APIExport for providers"
     # Becomes the `acceptapis` APIExportEndpointSlice the broker watches via
@@ -291,6 +298,8 @@ EOF
         --from-file=kubeconfig="$agent_kubeconfig" \
         | kubectl::apply "$kind_platform" "-"
     helm::repo kcp https://kcp-dev.github.io/helm-charts
+    # hostAliases.enabled is required — setting only .values renders nothing
+    # (the agent then dies fatally on the export's virtual-workspace URL).
     helm::install "$kind_platform" api-syncagent-gcp kcp/api-syncagent \
         --version=0.4.5 \
         --namespace default \
@@ -298,6 +307,7 @@ EOF
         --set apiExportName=objectstorages \
         --set agentName=gcp \
         --set kcpKubeconfig=kubeconfig-gcp \
+        --set hostAliases.enabled=true \
         --set "hostAliases.values[0].ip=$PM_TRAEFIK_IP" \
         --set "hostAliases.values[0].hostnames[0]=localhost" \
         --set "hostAliases.values[0].hostnames[1]=root.kcp.localhost" \
@@ -312,6 +322,9 @@ rules:
   - apiGroups: ["storage.example.io"]
     resources: ["objectstorages", "objectstorages/status"]
     verbs: [get, list, watch, create, update, delete, patch]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: [create, patch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -326,6 +339,23 @@ subjects:
     name: api-syncagent-gcp
     namespace: default
 EOF
+
+    # Gate on the agent having fully populated the APIExport (resource schemas
+    # AND the permissionClaims it manages, incl. core.kcp.io/logicalclusters).
+    # The broker copies the export's claims into the staging APIBinding at
+    # creation time and never reconciles them afterwards — an early order
+    # against an incomplete export leaves the staging sync permanently broken
+    # (greenfield race: "LogicalCluster not found").
+    log "Waiting for the api-syncagent to populate the objectstorages APIExport"
+    local tries=0
+    until KUBECONFIG="$ws_gcp" kubectl get apiexport objectstorages \
+            -o jsonpath='{.spec.permissionClaims[*].resource}' 2>/dev/null \
+            | grep -q logicalclusters \
+        && [[ -n "$(KUBECONFIG="$ws_gcp" kubectl get apiexport objectstorages -o jsonpath='{.spec.resources}' 2>/dev/null)" ]]; do
+        tries=$((tries + 1))
+        [[ $tries -gt 60 ]] && die "api-syncagent did not populate the APIExport (schemas/claims)"
+        sleep 5
+    done
 
     log "Registering the gcp provider with the broker (AcceptAPI, region eu)"
     kubectl::apply "$ws_gcp" ./providers/gcp/manifests/acceptapi.yaml

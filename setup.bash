@@ -164,10 +164,10 @@ _broker() {
 _consumer() {
     log "Binding the generic Object API and placing an order in the consumer workspace"
     kubectl::apply "$ws_consumer" \
-        ./consumer/apibinding-objects.yaml
+        ./consumer/apibinding-objectstorages.yaml
     kubectl::wait "$ws_consumer" apibinding/objectstorages "" condition=Ready
     kubectl::apply "$ws_consumer" \
-        ./consumer/order-object.yaml
+        ./consumer/order-objectstorage.yaml
 }
 
 _setup() {

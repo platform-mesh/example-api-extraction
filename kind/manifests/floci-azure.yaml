@@ -1,0 +1,64 @@
+# floci-azure emulator (Azurite, Azure Blob Storage compatible: port 10000).
+# Uses the well-known devstoreaccount1 credentials — no special env needed.
+# GET /devstoreaccount1?comp=list returns 200 (ListContainers).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: floci-azure
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: floci-azure
+  namespace: floci-azure
+  labels:
+    app.kubernetes.io/name: floci-azure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: floci-azure
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: floci-azure
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: floci-azure
+          image: mcr.microsoft.com/azure-storage/azurite:latest
+          args:
+            - azurite-blob
+            - --blobHost
+            - 0.0.0.0
+            - --blobPort
+            - "10000"
+            - --loose
+          ports:
+            - containerPort: 10000
+              name: blob
+          readinessProbe:
+            httpGet:
+              path: /devstoreaccount1?comp=list
+              port: 10000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: floci-azure
+  namespace: floci-azure
+spec:
+  selector:
+    app.kubernetes.io/name: floci-azure
+  ports:
+    - name: blob
+      port: 10000
+      targetPort: 10000

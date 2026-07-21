@@ -1,3 +1,4 @@
 resources:
   - floci-aws.yaml
+  - floci-azure.yaml
   - floci-gcp.yaml

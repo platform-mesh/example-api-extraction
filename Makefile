@@ -11,15 +11,12 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
 
 .PHONY: codegen
-codegen: manifests generate
-
-.PHONY: manifests
-manifests: controller-gen
-	$(CONTROLLER_GEN) crd rbac:roleName=example output:crd:dir=config/storage/crd output:rbac:dir=config/storage/rbac paths="./api/storage/..."
+codegen: generate
 
 .PHONY: generate
 generate: controller-gen
 	$(CONTROLLER_GEN) object paths="./api/..."
+	$(CONTROLLER_GEN) crd rbac:roleName=example output:crd:dir=config/generic/crd output:rbac:dir=config/generic/rbac paths="./api/storage/..."
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

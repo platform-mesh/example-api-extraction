@@ -39,6 +39,17 @@ type GroupVersionKind struct {
 	Kind    string `json:"kind"`
 }
 
+// Protocol is a object storage API dialect.
+// Follows the Container Object Storage Interface convention.
+// +kubebuilder:validation:Enum=S3;Azure;GCP
+type Protocol string
+
+const (
+	ProtocolS3    Protocol = "S3"
+	ProtocolAzure Protocol = "Azure"
+	ProtocolGCP   Protocol = "GCP"
+)
+
 type RelatedResource struct {
 	GVK  GroupVersionKind `json:"gvk"`
 	Name string           `json:"name"`
@@ -55,6 +66,10 @@ type ObjectStorageStatus struct {
 	// URL is the address of the provisioned object storage (e.g. gs://bucket or s3://bucket), set by the realizing provider.
 	// +optional
 	URL string `json:"url,omitempty"`
+
+	// Protocol is the object storage API dialect the endpoint speaks.
+	// +optional
+	Protocol Protocol `json:"protocol,omitempty"`
 
 	// Conditions represent the latest available observations of the ObjectStorage's state.
 	// +optional

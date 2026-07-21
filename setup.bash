@@ -352,6 +352,80 @@ _consumer() {
     log "Order fulfilled: $(KUBECONFIG="$ws_consumer" kubectl get objectstorage bucket-from-consumer -o jsonpath='{.status.url}')"
 }
 
+_kro() {
+    local provider="$1"
+    local ws_path="$2"
+    local ws_admin="$3"
+    shift 3
+
+    log "Installing the kro CRDs into $ws_path"
+    kubectl apply --kubeconfig "$ws_admin" \
+        -f "https://raw.githubusercontent.com/kubernetes-sigs/kro/main/helm/crds/kro.run_resourcegraphdefinitions.yaml"
+
+    log "Create in-cluster kubeconfig for kro targeting the workspace"
+    local ws_incluster="$kubeconfigs/workspaces/${provider}.kubeconfig"
+    kcp::kubeconfig::workspace "$kcp_admin" "$ws_incluster" "$ws_path" "$PM_KCP_INCLUSTER"
+
+    log "Installing kro for the $provider provider workspace"
+    helm::install::kro::workspace "$kind_platform" \
+        "kro-${provider}" \
+        "$ws_incluster" \
+        "kro-${provider}-system" \
+        "kro-kubeconfig"
+
+    kubectl::wait "$kind_platform" \
+        deployment/kro-${provider} \
+        "kro-${provider}-system" \
+        condition=Available
+}
+
+_floci() {
+    local name="$1"
+    shift
+
+    if docker ps --all --quiet | grep -q "^${name}$"; then
+        # exists, do nothing
+        return
+    fi
+    docker run --network kind -d --name "$name" "$@"
+}
+
+# _provider_X creates the provider's kcp workspace, then wires kro to it.
+_provider_gcp() {
+    local ws_admin="$kubeconfigs/workspaces/gcp.admin.kubeconfig"
+    kcp::create_workspace "$kcp_admin" "$ws_admin" "gcp"
+    _kro gcp root:gcp "$ws_admin"
+
+    log "Deploy floci gcp"
+    _floci floci-gcp -p 4588:4588 \
+      floci/floci-gcp:latest
+}
+
+_provider_aws() {
+    local ws_admin="$kubeconfigs/workspaces/aws.admin.kubeconfig"
+    kcp::create_workspace "$kcp_admin" "$ws_admin" "aws"
+    _kro aws root:aws "$ws_admin"
+
+    log "Deploy floci aws"
+    # All 68 services on :4566
+    _floci floci -p 4566:4566 \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      floci/floci:latest
+}
+
+_provider_azure() {
+    local ws_admin="$kubeconfigs/workspaces/azure.admin.kubeconfig"
+    kcp::create_workspace "$kcp_admin" "$ws_admin" "azure"
+    _kro azure root:azure "$ws_admin"
+
+    log "Deploy floci azure"
+    # REST :4577 · Event Hubs AMQP :5672 · Service Bus AMQP :5673
+    _floci floci-az -p 4577:4577 \
+      -p 5672:5672 \
+      -p 5673:5673 \
+      floci/floci-az:latest
+}
+
 _setup() {
     _kubeconfig
     _kcp
@@ -360,9 +434,16 @@ _setup() {
     _broker
     _gcp_provider
     _consumer
-    # The AWS provider is implemented separately (see providers/gcp as the
-    # blueprint); once its AcceptAPI (region us) is Ready, patching the order's
-    # region from eu to us triggers the broker migration.
+    # The AWS provider is implemented separately (see providers/aws/README.md,
+    # with providers/gcp as the blueprint); once its AcceptAPI (region us) is
+    # Ready, patching the order's region from eu to us triggers the broker
+    # migration.
+    #
+    # _provider_gcp/_provider_aws/_provider_azure (kro running per provider
+    # workspace, floci as docker containers on the kind network) are an
+    # alternative realization in progress — run them via
+    # `setup.bash kro-providers`. Note: _provider_gcp shares root:gcp with
+    # _gcp_provider; don't run both against the same workspace.
     log "Setup complete: order routed through the broker to the gcp provider."
     log "Marketplace view:"
     log "  kubectl --kubeconfig $ws_provider get apiexports,contentconfigurations,providermetadatas"
@@ -374,5 +455,6 @@ case "${1:-setup}" in
     (broker) _kubeconfig; _kcp; _broker ;;
     (gcp) _kubeconfig; _kcp; _gcp_provider ;;
     (consumer) _kubeconfig; _kcp; _consumer ;;
-    (*) die "Unknown command: $1 (want: setup | kubeconfig | broker | gcp | consumer)" ;;
+    (kro-providers) _kubeconfig; _kcp; _provider_gcp; _provider_aws; _provider_azure ;;
+    (*) die "Unknown command: $1 (want: setup | kubeconfig | broker | gcp | consumer | kro-providers)" ;;
 esac

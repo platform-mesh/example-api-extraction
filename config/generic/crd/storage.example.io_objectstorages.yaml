@@ -119,6 +119,14 @@ spec:
                   - type
                   type: object
                 type: array
+              protocol:
+                description: Protocol is the object storage API dialect the endpoint
+                  speaks.
+                enum:
+                - S3
+                - Azure
+                - GCP
+                type: string
               relatedResources:
                 additionalProperties:
                   properties:

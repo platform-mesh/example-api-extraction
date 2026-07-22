@@ -1,0 +1,18 @@
+# PublishedResource: the Azure provider's api-syncagent publishes the
+# kro-generated Object CRD into the provider workspace (root:providers:azure)
+# as APIExport "objects". Identical structure to GCP/AWS — only the target
+# namespace (azure-orders) and resource name (azure-objects) differ.
+apiVersion: syncagent.kcp.io/v1alpha1
+kind: PublishedResource
+metadata:
+  name: azure-objects
+spec:
+  enableWorkspacePaths: true
+  resource:
+    apiGroup: storage.generic.platform-mesh.io
+    kind: Object
+    versions:
+      - v1alpha1
+  naming:
+    namespace: azure-orders
+    name: '{{ .ClusterName }}-{{ .Object.metadata.namespace }}-{{ .Object.metadata.name }}'

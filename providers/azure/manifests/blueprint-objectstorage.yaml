@@ -1,0 +1,63 @@
+# krop blueprint: publishes storage.example.io/ObjectStorage from root:azure and
+# realizes it via a host-target Job creating a Blob container in floci-azure.
+# The realization (az-cli against the in-cluster floci-az, devstoreaccount1
+# connection string) is ported 1:1 from the standalone Azure PoC (#13); the
+# az CLI's container create is idempotent by default (exit 0 when the container
+# already exists), which migration round-trips require.
+#
+# Same structure and constraints as providers/krop/gcp/blueprint-objectstorage.yaml:
+#   - the Job's metadata.namespace MUST match the krop-controller namespace
+#     (here: azure, the _provider_azure release namespace)
+#   - requires the jobs.batch schema CRD in the workspace (applied by _krop)
+#   - keep instance names short until opendefensecloud/krop-controller#8 is fixed
+apiVersion: krop.opendefense.cloud/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: objectstorage
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: ObjectStorage
+    group: storage.example.io
+    spec:
+      region: string
+      versioning: boolean
+    status:
+      url: ${createContainer.metadata.?annotations["krop.odc/bucket-url"].orValue("")}
+      status: '${createContainer.status.?succeeded.orValue(0) > 0 ? "Available" : "Provisioning"}'
+  resources:
+    - id: createContainer
+      target: host
+      readyWhen:
+        - ${createContainer.status.?succeeded.orValue(0) > 0}
+      template:
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          name: ${schema.metadata.name}-create
+          namespace: azure # must match the krop-controller namespace
+          annotations:
+            # status expressions cannot reference schema -> precompute the URL
+            # here (templates CAN reference schema) and read it back in status.
+            krop.odc/bucket-url: ${"az://" + schema.metadata.name}
+        spec:
+          backoffLimit: 6
+          template:
+            spec:
+              restartPolicy: Never
+              enableServiceLinks: false
+              containers:
+                - name: create-container
+                  image: mcr.microsoft.com/azure-cli:2.61.0
+                  env:
+                    - name: CONTAINER
+                      value: ${schema.metadata.name}
+                  command: ["/bin/sh", "-c"]
+                  args:
+                    - |
+                      set -eu
+                      echo "creating container $CONTAINER in floci-azure"
+                      az storage container create \
+                        --name "$CONTAINER" \
+                        --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://floci-az.floci-az.svc.cluster.local:4577/devstoreaccount1;"
+                      echo "ok"

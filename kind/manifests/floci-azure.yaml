@@ -1,7 +1,5 @@
-# floci-az emulator (S3, LocalStack-compatible: port 4566, fake creds).
-# Verified locally 2026-07-21: image floci/floci:latest, port 4566, no special
-# env needed (standard AWS creds only). `aws s3api create-bucket` and list-buckets
-# work without a Docker socket — S3 is native. GET / returns 200 (ListAllMyBuckets).
+# floci-az emulator (Azure: Blob REST :4577, Event Hubs AMQP :5672, Service Bus :5673).
+# The well-known devstoreaccount1 connection string works against :4577, plain HTTP.
 apiVersion: v1
 kind: Namespace
 metadata:

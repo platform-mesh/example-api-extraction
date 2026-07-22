@@ -426,30 +426,30 @@ _floci() {
 }
 
 # _provider_X creates the provider's kcp workspace, then wires krop to it.
-_provider_gcp() {
-    local kind_namespace="gcp"
-    local ws_admin="$kubeconfigs/workspaces/gcp.admin.kubeconfig"
-    kcp::create_workspace "$kcp_admin" "$ws_admin" "gcp"
-    _krop gcp root:gcp "$ws_admin" "$kind_namespace"
+# krop::register <provider> <ws_admin> - publishes the provider's ObjectStorage
+# blueprint (providers/<provider>/manifests/blueprint-objectstorage.yaml) into its
+# workspace and registers it with the broker via the provider's AcceptAPI.
+# Shared by gcp/azure (and aws once its blueprint lands).
+krop::register() {
+    local provider="$1" ws_admin="$2"
 
-
-    log "Publishing the ObjectStorage blueprint (gcp)"
-    # Greenfield race: _krop applied the CRDs seconds ago — gate on Established
+    log "Publishing the ObjectStorage blueprint ($provider)"
+    # Greenfield race: _krop applied the CRDs seconds ago - gate on Established
     # and use the full resource name (the rgd shortname is not in kubectl's
     # discovery until the CRD has settled).
+    local crd
     for crd in resourcegraphdefinitions.krop.opendefense.cloud jobs.batch; do
         KUBECONFIG="$ws_admin" kubectl wait --for=condition=Established \
             "crd/$crd" --timeout="$timeout" \
             || die "CRD $crd not established"
     done
-   
-    kubectl::apply "$ws_admin" ./providers/gcp/manifests/blueprint-objectstorage.yaml
-    KUBECONFIG="$ws_admin" kubectl wait rgd.krop.opendefense.cloud/objectstorage \
-        --for=jsonpath='{.status.exportedAPI}'=objectstorages.storage.example.io \
+    kubectl::apply "$ws_admin" "./providers/$provider/manifests/blueprint-objectstorage.yaml"
+    KUBECONFIG="$ws_admin" kubectl wait resourcegraphdefinitions.krop.opendefense.cloud/objectstorage \
+        --for=jsonpath="{.status.exportedAPI}"=objectstorages.storage.example.io \
         --timeout="$timeout" \
         || die "blueprint did not publish"
 
-    log "Registering the gcp provider with the broker (AcceptAPI, region eu)"
+    log "Registering the $provider provider with the broker (AcceptAPI)"
     cat <<EOF | KUBECONFIG="$ws_admin" kubectl apply -f - || die "Failed to bind acceptapis"
 apiVersion: apis.kcp.io/v1alpha2
 kind: APIBinding
@@ -465,10 +465,19 @@ spec:
 EOF
     KUBECONFIG="$ws_admin" kubectl wait --for=condition=Ready=True apibinding/acceptapis --timeout="$timeout" \
         || die "acceptapis binding not ready"
-    kubectl::apply "$ws_admin" ./providers/krop/gcp/acceptapi.yaml
+    kubectl::apply "$ws_admin" "./providers/krop/$provider/acceptapi.yaml"
     KUBECONFIG="$ws_admin" kubectl wait acceptapi/objectstorages.storage.example.io \
         --for=condition=Ready --timeout="$timeout" \
-        || die "AcceptAPI did not become Ready — check the broker logs"
+        || die "AcceptAPI did not become Ready - check the broker logs"
+}
+
+_provider_gcp() {
+    local kind_namespace="gcp"
+    local ws_admin="$kubeconfigs/workspaces/gcp.admin.kubeconfig"
+    kcp::create_workspace "$kcp_admin" "$ws_admin" "gcp"
+    _krop gcp root:gcp "$ws_admin" "$kind_namespace"
+
+    krop::register gcp "$ws_admin"
 }
 
 _provider_aws() {
@@ -483,6 +492,8 @@ _provider_azure() {
     local ws_admin="$kubeconfigs/workspaces/azure.admin.kubeconfig"
     kcp::create_workspace "$kcp_admin" "$ws_admin" "azure"
     _krop azure root:azure "$ws_admin" "$kind_namespace"
+
+    krop::register azure "$ws_admin"
 }
 
 _setup() {
@@ -497,7 +508,10 @@ _setup() {
     _provider_gcp
     _provider_aws
     _provider_azure
-    # _consumer
+    # gcp (eu) and azure (ap) both carry blueprints + AcceptAPIs - the broker
+    # migration demo is self-contained: patch an order's region eu <-> ap.
+    # aws joins once its blueprint + AcceptAPI (region us) land.
+    _consumer
     # The AWS provider is implemented separately (see providers/aws/README.md):
     # under Path B that is _provider_aws plus an AWS blueprint (the gcp one with
     # the S3 PUT) and an AcceptAPI with region us. Once it is Ready, patching an

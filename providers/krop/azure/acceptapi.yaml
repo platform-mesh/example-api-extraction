@@ -1,0 +1,17 @@
+# AcceptAPI: registers the krop-published azure provider with the broker for
+# region ap. apiExportName references the export the krop Registrar publishes
+# from the blueprint. Created in root:azure; requires the acceptapis binding
+# there (setup.bash does both).
+apiVersion: broker.platform-mesh.io/v1alpha1
+kind: AcceptAPI
+metadata:
+  name: objectstorages.storage.example.io
+spec:
+  apiExportName: objectstorages.storage.example.io
+  filters:
+    - key: region
+      valueIn: [ap]
+  gvr:
+    group: storage.example.io
+    resource: objectstorages
+    version: v1alpha1

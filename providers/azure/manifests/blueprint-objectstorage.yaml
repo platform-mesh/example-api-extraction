@@ -25,7 +25,28 @@ spec:
     status:
       url: ${createContainer.metadata.?annotations["krop.odc/bucket-url"].orValue("")}
       status: '${createContainer.status.?succeeded.orValue(0) > 0 ? "Available" : "Provisioning"}'
+      relatedResources:
+        credentials:
+          gvk:
+            group: '${credentials.apiVersion.contains("/") ? credentials.apiVersion.split("/")[0] : ""}'
+            version: '${credentials.apiVersion.contains("/") ? credentials.apiVersion.split("/")[1] : credentials.apiVersion}'
+            kind: ${credentials.kind}
+          name: ${credentials.metadata.name}
+          namespace: ${credentials.metadata.namespace}
   resources:
+    - id: credentials
+      target: consumer
+      template:
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: ${schema.metadata.name}-credentials
+          namespace: ${schema.metadata.namespace}
+        stringData:
+          url: ${"az://" + schema.metadata.name}
+          account: devstoreaccount1
+          key: Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+          endpoint: http://floci-az.floci-az.svc.cluster.local:4577/devstoreaccount1
     - id: createContainer
       target: host
       readyWhen:

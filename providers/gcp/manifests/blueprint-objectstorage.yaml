@@ -32,7 +32,28 @@ spec:
     status:
       url: ${createBucket.metadata.?annotations["krop.odc/bucket-url"].orValue("")}
       status: '${createBucket.status.?succeeded.orValue(0) > 0 ? "Available" : "Provisioning"}'
+      relatedResources:
+        credentials:
+          gvk:
+            group: '${credentials.apiVersion.contains("/") ? credentials.apiVersion.split("/")[0] : ""}'
+            version: '${credentials.apiVersion.contains("/") ? credentials.apiVersion.split("/")[1] : credentials.apiVersion}'
+            kind: ${credentials.kind}
+          name: ${credentials.metadata.name}
+          namespace: ${credentials.metadata.namespace}
   resources:
+    - id: credentials
+      target: consumer
+      template:
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: ${schema.metadata.name}-credentials
+          namespace: ${schema.metadata.namespace}
+        stringData:
+          url: ${"gs://" + schema.metadata.name}
+          endpoint: http://floci-gcp.floci-gcp.svc.cluster.local:4588/
+          project: test-project
+          anonymous: "true"
     - id: createBucket
       target: host
       readyWhen:

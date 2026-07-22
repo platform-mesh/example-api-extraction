@@ -224,8 +224,8 @@ _broker() {
 # realization layer on the compute cluster (floci emulators + kro RGD), an
 # api-syncagent publishing the ObjectStorage API into the workspace, and the
 # AcceptAPI that registers it with the broker (region eu).
-# The AWS provider is intentionally NOT wired here — it is implemented
-# separately; see providers/gcp as the blueprint.
+# This is the legacy Path A wiring (gcp only); the AWS provider exists only
+# under Path B (_provider_aws).
 _gcp_provider() {
     log "Creating the gcp provider workspace and APIExport"
     workspace::create "$kcp_admin" "$ws_gcp" "gcp"
@@ -429,7 +429,7 @@ _floci() {
 # krop::register <provider> <ws_admin> - publishes the provider's ObjectStorage
 # blueprint (providers/<provider>/manifests/blueprint-objectstorage.yaml) into its
 # workspace and registers it with the broker via the provider's AcceptAPI.
-# Shared by gcp/azure (and aws once its blueprint lands).
+# Shared by gcp/aws/azure.
 krop::register() {
     local provider="$1" ws_admin="$2"
 
@@ -485,6 +485,8 @@ _provider_aws() {
     local ws_admin="$kubeconfigs/workspaces/aws.admin.kubeconfig"
     kcp::create_workspace "$kcp_admin" "$ws_admin" "aws"
     _krop aws root:aws "$ws_admin" "$kind_namespace"
+
+    krop::register aws "$ws_admin"
 }
 
 _provider_azure() {
@@ -594,14 +596,10 @@ _setup() {
     _provider_gcp
     _provider_aws
     _provider_azure
-    # gcp (eu) and azure (ap) both carry blueprints + AcceptAPIs - the broker
-    # migration demo is self-contained: patch an order's region eu <-> ap.
-    # aws joins once its blueprint + AcceptAPI (region us) land.
+    # gcp (eu), aws (us) and azure (ap) all carry blueprints + AcceptAPIs - the
+    # broker migration demo is self-contained: patch an order's region between
+    # eu, us and ap (see providers/aws/README.md for the us walkthrough).
     _consumer
-    # The AWS provider is implemented separately (see providers/aws/README.md):
-    # under Path B that is _provider_aws plus an AWS blueprint (the gcp one with
-    # the S3 PUT) and an AcceptAPI with region us. Once it is Ready, patching an
-    # order's region from eu to us triggers the broker migration.
     # Keep instance names short until opendefensecloud/krop-controller#8 is fixed.
     #
     # The syncagent-based Path A remains available for comparison via
@@ -618,9 +616,10 @@ case "${1:-setup}" in
     (kubeconfig) _kubeconfig; _kcp ;;
     (broker) _kubeconfig; _kcp; _broker ;;
     (gcp) _kubeconfig; _kcp; _provider_gcp ;;
+    (aws) _kubeconfig; _kcp; _provider_aws ;;
     (syncagent-gcp) _kubeconfig; _kcp; _gcp_provider ;;
     (consumer) _kubeconfig; _kcp; _consumer ;;
     (krop-providers) _kubeconfig; _kcp; _provider_gcp; _provider_aws; _provider_azure ;;
     (gcp-prod) _kubeconfig; _kcp; _host_gcp_prod; _provider_gcp_prod ;;
-    (*) die "Unknown command: $1 (want: setup | kubeconfig | broker | gcp | syncagent-gcp | consumer | krop-providers | gcp-prod)" ;;
+    (*) die "Unknown command: $1 (want: setup | kubeconfig | broker | gcp | aws | syncagent-gcp | consumer | krop-providers | gcp-prod)" ;;
 esac

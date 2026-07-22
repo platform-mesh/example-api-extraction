@@ -1,0 +1,68 @@
+# krop blueprint: publishes storage.example.io/ObjectStorage from root:aws and
+# realizes it via a host-target Job against floci-aws (in-cluster service from
+# kind/manifests, S3/LocalStack-compatible on :4566).
+#
+# The realization is the verified S3 twin of the gcp blueprint: floci-aws
+# accepts an unauthenticated path-style `PUT /<bucket>` (verified live), so the
+# same curl image serves here — no aws-cli needed. 409 = bucket already exists
+# and is treated as success: migrations BACK to this provider re-create over
+# leftover buckets (create-only PoC), so idempotency is mandatory.
+#
+# Same structure and constraints as providers/gcp/manifests/blueprint-objectstorage.yaml:
+#   - the Job's metadata.namespace MUST match the krop-controller namespace
+#     (here: aws, the _provider_aws release namespace)
+#   - requires the jobs.batch schema CRD in the workspace (applied by _krop)
+#   - keep instance names short until opendefensecloud/krop-controller#8 is fixed
+apiVersion: krop.opendefense.cloud/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: objectstorage
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: ObjectStorage
+    group: storage.example.io
+    spec:
+      region: string
+      versioning: boolean
+    status:
+      url: ${createBucket.metadata.?annotations["krop.odc/bucket-url"].orValue("")}
+      status: '${createBucket.status.?succeeded.orValue(0) > 0 ? "Available" : "Provisioning"}'
+  resources:
+    - id: createBucket
+      target: host
+      readyWhen:
+        - ${createBucket.status.?succeeded.orValue(0) > 0}
+      template:
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          name: ${schema.metadata.name}-create
+          namespace: aws # must match the krop-controller namespace
+          annotations:
+            # status expressions cannot reference schema -> precompute the URL
+            # here (templates CAN reference schema) and read it back in status.
+            krop.odc/bucket-url: ${"s3://" + schema.metadata.name}
+        spec:
+          backoffLimit: 6
+          template:
+            spec:
+              restartPolicy: Never
+              enableServiceLinks: false
+              containers:
+                - name: create-bucket
+                  image: curlimages/curl:8.11.1
+                  env:
+                    - name: BUCKET
+                      value: ${schema.metadata.name}
+                  command: ["/bin/sh", "-c"]
+                  args:
+                    - |
+                      set -eu
+                      echo "creating s3://$BUCKET in floci-aws"
+                      code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+                        "http://floci-aws.floci-aws.svc.cluster.local:4566/$BUCKET")
+                      case "$code" in
+                        200|409) echo "ok ($code)";;
+                        *) echo "unexpected HTTP $code"; exit 1;;
+                      esac

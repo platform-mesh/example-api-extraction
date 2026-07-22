@@ -5,12 +5,15 @@ set -eu
 # to allow local execution against in-kind floci
 floci_gcp="floci-gcp.floci-gcp.svc.cluster.local:4588"
 floci_az="floci-az.floci-az.svc.cluster.local:4577"
+floci_aws="floci-aws.floci-aws.svc.cluster.local:4566"
 # copy-object.sh local <origin> <destination>
 if [ "$#" -eq 3 ]; then
     kubectl port-forward -n floci-gcp services/floci-gcp 4588:4588 &>/dev/null &
     floci_gcp="localhost:4588"
     kubectl port-forward -n floci-az services/floci-az 4577:4577 &>/dev/null &
     floci_az="localhost:4577"
+    kubectl port-forward -n floci-aws services/floci-aws 4566:4566 &>/dev/null &
+    floci_aws="localhost:4566"
     ORIGIN_URI="$2"
     DESTINATION_URI="$3"
 fi
@@ -23,12 +26,14 @@ setenv() {
     remote_upper="$(echo $remote | tr 'a-z' 'A-Z')"
 
     case "$uri" in
-        # these are just guess values from claude, real values tbd
         (s3://*)
+            # floci-aws is LocalStack-compatible: path-style, fake creds.
             export "RCLONE_CONFIG_${remote_upper}_TYPE=s3"
-            export "RCLONE_CONFIG_${remote_upper}_PROVIDER=AWS"
-            export "RCLONE_CONFIG_${remote_upper}_REGION=eu"
-            export "RCLONE_CONFIG_${remote_upper}_ENDPOINT=" # TODO
+            export "RCLONE_CONFIG_${remote_upper}_PROVIDER=Other"
+            export "RCLONE_CONFIG_${remote_upper}_ENDPOINT=http://${floci_aws}"
+            export "RCLONE_CONFIG_${remote_upper}_ACCESS_KEY_ID=test"
+            export "RCLONE_CONFIG_${remote_upper}_SECRET_ACCESS_KEY=test"
+            export "RCLONE_CONFIG_${remote_upper}_FORCE_PATH_STYLE=true"
             ;;
         (gs://*)
             export "RCLONE_CONFIG_${remote_upper}_TYPE=google cloud storage"

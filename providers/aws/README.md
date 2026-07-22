@@ -1,54 +1,34 @@
-# AWS provider — handover (Path B / krop)
+# AWS provider (Path B / krop, region us)
 
-The AWS provider is implemented separately. The team has decided on **Path B**:
-krop-controller per provider workspace, blueprint-resident realization, no
-api-syncagent. This documents the interface: what exists, what to build, and
-the traps already found. **The gcp provider is the verified blueprint** — the
-whole chain (broker routing, order, cross-provider migration) has been executed
-live against it; `_provider_gcp` in [`setup.bash`](../../setup.bash) is the
-exact working sequence.
+The AWS provider follows **Path B**: krop-controller per provider workspace,
+blueprint-resident realization, no api-syncagent. It mirrors the verified gcp
+provider exactly — same chain (broker routing, order, cross-provider
+migration), different realization: an idempotent S3 `PUT` against the
+in-cluster floci-aws instead of the GCS `POST`.
 
-## What already exists
+## What is wired
 
-- **`_provider_aws` in setup.bash** deploys the infrastructure: workspace
-  `root:aws`, krop-controller (release `krop-aws`, namespace `aws`), blueprint +
-  `jobs.batch` schema CRDs, floci as a docker container on the kind network.
-  Run it via `./setup.bash krop-providers` (or call the function alone).
-- **floci-aws** (S3, `:4566`, LocalStack-compatible): verified — an
-  unauthenticated path-style `PUT /<bucket>` creates a bucket; `aws s3api`
-  works too, no Docker socket needed for S3. If you prefer the in-cluster
-  variant with a stable service DNS name, `kind/manifests/floci-aws.yaml` is
-  already applied by the gcp setup (service
-  `floci-aws.floci-aws.svc.cluster.local:4566`).
-- **The broker side is up** and treats krop-published exports like any other
-  (verified): AcceptAPI verification, routing, staging, migration all work.
-- **A verified AWS blueprint variant already exists** (used live in the
-  cross-architecture migration test): the gcp blueprint with the S3 `PUT`
-  instead of the GCS `POST` — see the `s3://` twin in
-  [PR #10's blueprint comment](https://github.com/platform-mesh/example-api-extraction/pull/10#issuecomment-5043180426).
+- **`_provider_aws` in [`setup.bash`](../../setup.bash)**: workspace
+  `root:aws`, krop-controller (release `krop-aws`, namespace `aws`), blueprint
+  + `jobs.batch` schema CRDs, then `krop::register aws` (blueprint publish +
+  AcceptAPI). Runs as part of `./setup.bash setup`; standalone via
+  `./setup.bash aws`.
+- **[`manifests/blueprint-objectstorage.yaml`](manifests/blueprint-objectstorage.yaml)**:
+  host-target Job, `PUT http://floci-aws.floci-aws.svc.cluster.local:4566/<bucket>`
+  (unauthenticated path-style, verified live; 200|409 = success),
+  `status.url = s3://<name>`.
+- **[`../krop/aws/acceptapi.yaml`](../krop/aws/acceptapi.yaml)**: registers the
+  krop-published export with the broker for region `us`.
+- **floci-aws** (S3, `:4566`, LocalStack-compatible): deployed in-cluster by
+  `_floci` from `kind/manifests/floci-aws.yaml` (service
+  `floci-aws.floci-aws.svc.cluster.local:4566`). No Docker socket needed for
+  S3; `aws s3api` works too, but the blueprint only needs curl.
 
-## What you need to build
+The `manifests/{acceptapi,publishedresource-objectstorages,rgd-objectstorage}.yaml`
+files are the legacy Path A (api-syncagent) variant, kept for comparison — do
+not register both paths for the same region at the same time.
 
-Mirror the gcp additions (three small files + the `_provider_gcp` tail):
-
-1. **`providers/krop/aws/blueprint-objectstorage.yaml`** — copy
-   [`providers/krop/gcp/blueprint-objectstorage.yaml`](../krop/gcp/blueprint-objectstorage.yaml)
-   and change: the Job namespace to `aws` (must match the krop-controller
-   namespace), the URL prefix to `s3://`, and the create call to the idempotent
-   S3 PUT:
-   ```sh
-   code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
-     "http://floci-aws.floci-aws.svc.cluster.local:4566/$BUCKET")
-   case "$code" in 200|409) echo "ok ($code)";; *) echo "unexpected HTTP $code"; exit 1;; esac
-   ```
-2. **`providers/krop/aws/acceptapi.yaml`** — copy the gcp one, filter
-   `region: valueIn: [us]`.
-3. **Wire it in `_provider_aws`** like the `_provider_gcp` tail: apply the
-   blueprint into `root:aws` (wait for `status.exportedAPI`), bind `acceptapis`
-   from the provisioned broker workspace (`provider::path` helper), apply the
-   AcceptAPI, wait `Ready`.
-
-## Acceptance test + the Friday finale
+## Acceptance test + migration finale
 
 ```bash
 # fresh us order through the broker:
@@ -63,9 +43,9 @@ KUBECONFIG=kubeconfigs/workspaces/consumer.kubeconfig kubectl wait \
 # expect: status.url = s3://us1
 ```
 
-**The finale** (mechanics already proven live across providers, 37s incl.
-cutover): patch the standing order's region — the broker migrates it from the
-gcp provider to yours:
+**The finale** (mechanics proven live across providers, 37s incl. cutover):
+patch a standing order's region — the broker migrates it from the gcp provider
+to aws:
 
 ```bash
 KUBECONFIG=kubeconfigs/workspaces/consumer.kubeconfig kubectl patch \
@@ -82,8 +62,8 @@ KUBECONFIG=kubeconfigs/workspaces/consumer.kubeconfig kubectl patch \
    fail to materialize silently, and a migration then hangs before cutover.
 2. **Idempotent creates are mandatory** for migration round-trips: cutover
    never deletes buckets (create-only PoC), so migrating BACK re-creates over
-   the leftover and floci answers 409 — treat it as success (see the snippet
-   above; a `curl -sf` crash-loops the Job forever).
+   the leftover and floci answers 409 — the blueprint treats it as success
+   (a `curl -sf` would crash-loop the Job forever).
 3. **kro type-checks blueprint children against the workspace API surface** —
    kcp serves neither `batch/v1` nor Pods. `_krop` already applies the minimal
    `jobs.batch` schema CRD; don't remove it.

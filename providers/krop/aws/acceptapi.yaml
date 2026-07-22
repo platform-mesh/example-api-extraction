@@ -1,0 +1,17 @@
+# AcceptAPI: registers the krop-published aws provider with the broker for
+# region us. apiExportName references the export the krop Registrar publishes
+# from the blueprint. Created in root:aws; requires the acceptapis binding
+# there (setup.bash does both).
+apiVersion: broker.platform-mesh.io/v1alpha1
+kind: AcceptAPI
+metadata:
+  name: objectstorages.storage.example.io
+spec:
+  apiExportName: objectstorages.storage.example.io
+  filters:
+    - key: region
+      valueIn: [us]
+  gvr:
+    group: storage.example.io
+    resource: objectstorages
+    version: v1alpha1

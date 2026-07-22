@@ -351,10 +351,10 @@ _consumer() {
 
     log "Placing an order (ObjectStorage, region eu)"
     kubectl::apply "$ws_consumer" ./consumer/order-objectstorage.yaml
-    KUBECONFIG="$ws_consumer" kubectl wait objectstorage/bucket-from-consumer \
+    KUBECONFIG="$ws_consumer" kubectl wait objectstorage/bucket1 \
         --for=jsonpath='{.status.status}'=Available --timeout="$timeout" \
         || die "Order did not become Available — check broker/syncagent logs"
-    log "Order fulfilled: $(KUBECONFIG="$ws_consumer" kubectl get objectstorage bucket-from-consumer -o jsonpath='{.status.url}')"
+    log "Order fulfilled: $(KUBECONFIG="$ws_consumer" kubectl get objectstorage bucket1 -o jsonpath='{.status.url}')"
 }
 
 _krop() {
@@ -422,7 +422,7 @@ _floci() {
     docker run --network kind -d --name "$name" "$@"
 }
 
-# _provider_X creates the provider's kcp workspace, then wires kro to it.
+# _provider_X creates the provider's kcp workspace, then wires krop to it.
 _provider_gcp() {
     local kind_namespace="gcp"
     local ws_admin="$kubeconfigs/workspaces/gcp.admin.kubeconfig"
@@ -432,6 +432,37 @@ _provider_gcp() {
     log "Deploy floci gcp"
     _floci floci-gcp -p 4588:4588 \
       floci/floci-gcp:latest
+    # The blueprint's host Job targets the in-cluster floci service (stable svc
+    # DNS, verified) — deploy it alongside the docker-network variant above.
+    kubectl::kustomize "$kind_platform" ./kind/manifests
+
+    log "Publishing the ObjectStorage blueprint (gcp)"
+    kubectl::apply "$ws_admin" ./providers/krop/gcp/blueprint-objectstorage.yaml
+    KUBECONFIG="$ws_admin" kubectl wait rgd.krop.opendefense.cloud/objectstorage \
+        --for=jsonpath='{.status.exportedAPI}'=objectstorages.storage.example.io \
+        --timeout="$timeout" \
+        || die "blueprint did not publish"
+
+    log "Registering the gcp provider with the broker (AcceptAPI, region eu)"
+    cat <<EOF | KUBECONFIG="$ws_admin" kubectl apply -f - || die "Failed to bind acceptapis"
+apiVersion: apis.kcp.io/v1alpha2
+kind: APIBinding
+metadata:
+  name: acceptapis
+spec:
+  reference:
+    export:
+      path: $(provider::path)
+      name: acceptapis
+  permissionClaims:
+    - {group: "", resource: secrets, selector: {matchAll: true}, state: Accepted, verbs: [get, list, watch]}
+EOF
+    KUBECONFIG="$ws_admin" kubectl wait --for=condition=Ready=True apibinding/acceptapis --timeout="$timeout" \
+        || die "acceptapis binding not ready"
+    kubectl::apply "$ws_admin" ./providers/krop/gcp/acceptapi.yaml
+    KUBECONFIG="$ws_admin" kubectl wait acceptapi/objectstorages.storage.example.io \
+        --for=condition=Ready --timeout="$timeout" \
+        || die "AcceptAPI did not become Ready — check the broker logs"
 }
 
 _provider_aws() {
@@ -467,19 +498,21 @@ _setup() {
     _provider_workspace
     _platform_apis
     _broker
-    _gcp_provider
+    # Path B (the decided architecture): krop-controller per provider workspace,
+    # blueprint-resident realization, no api-syncagent.
+    _provider_gcp
     _consumer
-    # The AWS provider is implemented separately (see providers/aws/README.md,
-    # with providers/gcp as the blueprint); once its AcceptAPI (region us) is
-    # Ready, patching the order's region from eu to us triggers the broker
-    # migration.
+    # The AWS provider is implemented separately (see providers/aws/README.md):
+    # under Path B that is _provider_aws plus an AWS blueprint (the gcp one with
+    # the S3 PUT) and an AcceptAPI with region us. Once it is Ready, patching an
+    # order's region from eu to us triggers the broker migration.
+    # Keep instance names short until opendefensecloud/krop-controller#8 is fixed.
     #
-    # _provider_gcp/_provider_aws/_provider_azure (krop-controller per provider
-    # workspace, floci as docker containers on the kind network) are the Path-B
-    # realization — run them via `setup.bash krop-providers`. Note:
-    # _provider_gcp shares root:gcp with _gcp_provider; don't run both against
-    # the same workspace.
-    log "Setup complete: order routed through the broker to the gcp provider."
+    # The syncagent-based Path A remains available for comparison via
+    # `setup.bash syncagent-gcp` (uses the same root:gcp workspace — the
+    # AcceptAPIs of both paths must not be registered for the same region at
+    # the same time, or broker routing becomes ambiguous).
+    log "Setup complete: order routed through the broker to the krop gcp provider."
     log "Marketplace view:"
     log "  kubectl --kubeconfig $ws_provider get apiexports,contentconfigurations,providermetadatas"
 }
@@ -488,8 +521,9 @@ case "${1:-setup}" in
     (setup) _setup ;;
     (kubeconfig) _kubeconfig; _kcp ;;
     (broker) _kubeconfig; _kcp; _broker ;;
-    (gcp) _kubeconfig; _kcp; _gcp_provider ;;
+    (gcp) _kubeconfig; _kcp; _provider_gcp ;;
+    (syncagent-gcp) _kubeconfig; _kcp; _gcp_provider ;;
     (consumer) _kubeconfig; _kcp; _consumer ;;
     (krop-providers) _kubeconfig; _kcp; _provider_gcp; _provider_aws; _provider_azure ;;
-    (*) die "Unknown command: $1 (want: setup | kubeconfig | broker | gcp | consumer | krop-providers)" ;;
+    (*) die "Unknown command: $1 (want: setup | kubeconfig | broker | gcp | syncagent-gcp | consumer | krop-providers)" ;;
 esac

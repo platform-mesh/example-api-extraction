@@ -1,16 +1,18 @@
 # The order: a generic bucket in region=eu.
+# Keep the name short: krop stamps the mangled host name as a label value
+# (63-byte cap) until opendefensecloud/krop-controller#8 is fixed.
 # -> broker matches the GCP provider (AcceptAPI region valueIn:[eu])
-# -> floci-gcp creates gs://bucket-from-consumer
+# -> floci-gcp creates gs://bucket1
 # -> status.url appears back in the consumer workspace.
 #
 # Migration (the demo highlight): patch region to us ->
-#   kubectl patch object bucket-from-consumer --type merge -p '{"spec":{"region":"us"}}'
+#   kubectl patch object bucket1 --type merge -p '{"spec":{"region":"us"}}'
 # The broker creates a Migration, stages at the AWS provider, cuts over ->
-# s3://bucket-from-consumer in floci-aws, the GCP copy is torn down.
+# s3://bucket1 in floci-aws, the GCP copy is torn down.
 apiVersion: storage.example.io/v1alpha1
 kind: ObjectStorage
 metadata:
-  name: bucket-from-consumer
+  name: bucket1
 spec:
   region: eu
   versioning: false

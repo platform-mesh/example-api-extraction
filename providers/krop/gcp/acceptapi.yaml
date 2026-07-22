@@ -1,0 +1,17 @@
+# AcceptAPI: registers the krop-published gcp provider with the broker for
+# region de/eu. apiExportName references the export the krop Registrar
+# publishes from the blueprint (named <plural>.<group>). Created in root:gcp;
+# requires the acceptapis binding there (setup.bash does both).
+apiVersion: broker.platform-mesh.io/v1alpha1
+kind: AcceptAPI
+metadata:
+  name: objectstorages.storage.example.io
+spec:
+  apiExportName: objectstorages.storage.example.io
+  filters:
+    - key: region
+      valueIn: [de, eu]
+  gvr:
+    group: storage.example.io
+    resource: objectstorages
+    version: v1alpha1

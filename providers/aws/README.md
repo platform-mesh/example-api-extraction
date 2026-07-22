@@ -1,132 +1,108 @@
-# AWS provider — handover
+# AWS provider — handover (Path B / krop)
 
-The AWS provider is implemented separately from the rest of this example. This
-document is the interface: what already exists, what you need to build, and the
-traps we already ran into so you don't have to.
-
-**The GCP provider is the verified blueprint.** Everything described here has
-been executed end to end for GCP on a live Platform Mesh local-setup — the
-`_gcp_provider` function in [`setup.bash`](../../setup.bash) is the exact,
-working sequence. Mirror it with `aws` substituted.
+The AWS provider is implemented separately. The team has decided on **Path B**:
+krop-controller per provider workspace, blueprint-resident realization, no
+api-syncagent. This documents the interface: what exists, what to build, and
+the traps already found. **The gcp provider is the verified blueprint** — the
+whole chain (broker routing, order, cross-provider migration) has been executed
+live against it; `_provider_gcp` in [`setup.bash`](../../setup.bash) is the
+exact working sequence.
 
 ## What already exists
 
-- **Manifests in this directory** — migrated to `storage.example.io/ObjectStorage`
-  and bug-fixed (see the traps below), but **not yet wired**:
-  - `manifests/rgd-objectstorage.yaml` — kro realization: Job → `aws s3api
-    create-bucket` against floci-aws
-  - `manifests/publishedresource-objectstorages.yaml` — syncagent publication,
-    landing namespace `aws-orders`
-  - `manifests/acceptapi.yaml` — registers you with the broker for `region: us`
-- **floci-aws** is already deployed by `setup.bash` (`kind/manifests/`):
-  image `floci/floci:latest`, S3 on `:4566`, verified — `s3api create-bucket`
-  works without a Docker socket, and an unauthenticated path-style
-  `PUT /<bucket>` works too if you want to avoid the aws-cli image entirely.
-- **The broker side is up**: AcceptAPI APIExport, coordination CRDs, marketplace
-  registration and a running broker in `resource-broker-system`.
+- **`_provider_aws` in setup.bash** deploys the infrastructure: workspace
+  `root:aws`, krop-controller (release `krop-aws`, namespace `aws`), blueprint +
+  `jobs.batch` schema CRDs, floci as a docker container on the kind network.
+  Run it via `./setup.bash krop-providers` (or call the function alone).
+- **floci-aws** (S3, `:4566`, LocalStack-compatible): verified — an
+  unauthenticated path-style `PUT /<bucket>` creates a bucket; `aws s3api`
+  works too, no Docker socket needed for S3. If you prefer the in-cluster
+  variant with a stable service DNS name, `kind/manifests/floci-aws.yaml` is
+  already applied by the gcp setup (service
+  `floci-aws.floci-aws.svc.cluster.local:4566`).
+- **The broker side is up** and treats krop-published exports like any other
+  (verified): AcceptAPI verification, routing, staging, migration all work.
+- **A verified AWS blueprint variant already exists** (used live in the
+  cross-architecture migration test): the gcp blueprint with the S3 `PUT`
+  instead of the GCS `POST` — see the `s3://` twin in
+  [PR #10's blueprint comment](https://github.com/platform-mesh/example-api-extraction/pull/10#issuecomment-5043180426).
 
 ## What you need to build
 
-Mirror `_gcp_provider` in `setup.bash` (each step is one block there):
+Mirror the gcp additions (three small files + the `_provider_gcp` tail):
 
-1. **kcp workspace `root:aws`** with an **empty APIExport `objectstorages`**
-   (the api-syncagent manages the resource schemas).
-2. **Bind the `acceptapis` export** from the provisioned broker workspace
-   (`root:providers:resource-broker-<suffix>` — derive it with the
-   `provider::path` helper; the provisioned kubeconfig's server URL carries the
-   logical-cluster ID, not the path).
-3. **Realization** — one decision to make first, see below.
-4. **api-syncagent** on the compute cluster: admin SA token in `root:aws`,
-   kubeconfig against the in-cluster front-proxy
-   (`https://frontproxy-front-proxy.platform-mesh-system:8443/clusters/root:aws`),
-   secret `kubeconfig-aws`, helm release `api-syncagent-aws`
-   (`apiExportName=objectstorages`, `agentName=aws`, **hostAliases — see traps**),
-   then `manifests/publishedresource-objectstorages.yaml` + a ClusterRole/Binding
-   for `objectstorages(+/status)` bound to the `api-syncagent-aws` SA.
-5. **AcceptAPI** (`manifests/acceptapi.yaml`, `region: us`) in `root:aws` and
-   wait for `Ready` — that is the broker handshake (it binds your export in a
-   verification workspace).
+1. **`providers/krop/aws/blueprint-objectstorage.yaml`** — copy
+   [`providers/krop/gcp/blueprint-objectstorage.yaml`](../krop/gcp/blueprint-objectstorage.yaml)
+   and change: the Job namespace to `aws` (must match the krop-controller
+   namespace), the URL prefix to `s3://`, and the create call to the idempotent
+   S3 PUT:
+   ```sh
+   code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+     "http://floci-aws.floci-aws.svc.cluster.local:4566/$BUCKET")
+   case "$code" in 200|409) echo "ok ($code)";; *) echo "unexpected HTTP $code"; exit 1;; esac
+   ```
+2. **`providers/krop/aws/acceptapi.yaml`** — copy the gcp one, filter
+   `region: valueIn: [us]`.
+3. **Wire it in `_provider_aws`** like the `_provider_gcp` tail: apply the
+   blueprint into `root:aws` (wait for `status.exportedAPI`), bind `acceptapis`
+   from the provisioned broker workspace (`provider::path` helper), apply the
+   AcceptAPI, wait `Ready`.
 
-## The realization decision (read before step 3)
-
-**kro allows exactly one RGD per GVK per cluster.** The shared local-setup
-cluster already runs the GCP RGD for `objectstorages.storage.example.io` —
-applying `manifests/rgd-objectstorage.yaml` there would silently **replace** it
-and break the GCP provider (we watched this happen: a stale RGD realized an eu
-order against floci-aws). Two clean options:
-
-- **Own compute cluster** (matches the upstream resource-broker layout): a
-  second kind cluster with kro + floci-aws + your RGD, and your syncagent runs
-  there. Fully independent from the GCP side; needs its own hostAliases story to
-  reach kcp (the kind-node-name resolution trick from the upstream
-  broker-postgres example).
-- **Shared cluster with the dispatch RGD**
-  ([`providers/single-cluster/`](../single-cluster/)): replace the GCP RGD with
-  the dispatch RGD, which realizes both clouds from one Job branching on
-  `spec.region`. You then only build steps 1–2 and 4–5 (workspace, binding,
-  syncagent, AcceptAPI) — no own RGD. Coordinate the swap with us, since it
-  touches the GCP realization.
-
-For the hackathon (one laptop, one cluster) we recommend the **dispatch RGD**
-route.
-
-## Traps we already hit (so you don't)
-
-1. **hostAliases are mandatory** for every pod that talks to kcp virtual
-   workspaces (your syncagent!): kcp advertises VW URLs under its external
-   hostnames (`root.kcp.localhost`, …), which resolve to `127.0.0.1` inside
-   pods. Map them to the pinned traefik ClusterIP `10.96.188.4` — see the helm
-   `--set hostAliases...` flags in `_gcp_provider`.
-2. **Scoped tokens don't cross workspaces.** SA tokens minted in a workspace are
-   scoped to its logical cluster. Fine for the syncagent (it only talks to
-   `root:aws`), but don't try to reuse the provisioned provider SA for anything
-   that enters child workspaces.
-3. **kro YAML/CEL traps** (already fixed in the checked-in RGD — don't
-   reintroduce them when editing): quote CEL ternaries (`': '` breaks YAML);
-   status expressions are dry-run at RGD build time, so use
-   `.?annotations[...].orValue("")` and concatenate string prefixes in CEL
-   (literal `s3://${...}` prefixes are dropped); `$BUCKET` not `${BUCKET}` in
-   Job shell scripts (CEL delimiter collision).
-4. **Workspaces stuck Initializing are painful to delete.** If a workspace ever
-   hangs in `Initializing`, fix the cause first; force-deleting leaves ghosts.
-   (Removing the finalizers worked for us, but only because the broker
-   immediately recreated it with a working identity.)
-5. **create-only realization**: the Jobs only create buckets. On migration
-   cutover the broker removes the *resource* from the losing provider, but the
-   bucket stays in the emulator — fine for the demo, floci is ephemeral.
-
-## Acceptance test
+## Acceptance test + the Friday finale
 
 ```bash
-# via the consumer workspace (setup.bash created it):
+# fresh us order through the broker:
 KUBECONFIG=kubeconfigs/workspaces/consumer.kubeconfig kubectl apply -f - <<EOF
 apiVersion: storage.example.io/v1alpha1
 kind: ObjectStorage
-metadata:
-  name: bucket-us
-spec:
-  region: us
+metadata: {name: us1}
+spec: {region: us}
 EOF
 KUBECONFIG=kubeconfigs/workspaces/consumer.kubeconfig kubectl wait \
-  objectstorage/bucket-us --for=jsonpath='{.status.status}'=Available --timeout=5m
-# expect: status.url = s3://bucket-us
+  objectstorage/us1 --for=jsonpath='{.status.status}'=Available --timeout=5m
+# expect: status.url = s3://us1
 ```
 
-**The grand finale** (needs both providers Ready): patch the existing eu order
-to `region: us` — the broker creates a `Migration`, stages at your provider,
-cuts over, and tears down the GCP copy:
+**The finale** (mechanics already proven live across providers, 37s incl.
+cutover): patch the standing order's region — the broker migrates it from the
+gcp provider to yours:
 
 ```bash
 KUBECONFIG=kubeconfigs/workspaces/consumer.kubeconfig kubectl patch \
-  objectstorage bucket-from-consumer --type merge -p '{"spec":{"region":"us"}}'
+  objectstorage bucket1 --type merge -p '{"spec":{"region":"us"}}'
+# status.url flips gs://bucket1 -> s3://bucket1, the gcp copy is torn down
 ```
+
+## Traps already found (all live-verified)
+
+1. **Keep instance names short** until
+   [opendefensecloud/krop-controller#8](https://github.com/opendefensecloud/krop-controller/issues/8)
+   is fixed: krop stamps the mangled host name (`<cluster>-<name>-<name>-…`) as
+   a pod-template **label**, capped at 63 bytes — instance names ≥ ~17 chars
+   fail to materialize silently, and a migration then hangs before cutover.
+2. **Idempotent creates are mandatory** for migration round-trips: cutover
+   never deletes buckets (create-only PoC), so migrating BACK re-creates over
+   the leftover and floci answers 409 — treat it as success (see the snippet
+   above; a `curl -sf` crash-loops the Job forever).
+3. **kro type-checks blueprint children against the workspace API surface** —
+   kcp serves neither `batch/v1` nor Pods. `_krop` already applies the minimal
+   `jobs.batch` schema CRD; don't remove it.
+4. **hostAliases are load-bearing** for every pod talking to kcp VW URLs — the
+   `providers/krop/hostaliases` kustomize component handles it (kind-only
+   target selector, applies to any Deployment). The `/clusters/root ->
+   /clusters/root:<provider>` sed in `_krop` sets the controller's workspace —
+   also load-bearing.
+5. **Consumer-target resources land in the staging workspace** in the broker
+   flow (the instance copy lives there), not at the real consumer —
+   `status.url` is the consumer contract; don't rely on consumer-target
+   projection for broker-routed orders.
 
 ## Debugging pointers
 
-- AcceptAPI not Ready → `kubectl get acceptapi ... -o yaml` (conditions carry
-  the broker's error) and the broker logs:
-  `kubectl -n resource-broker-system logs deploy/resource-broker`
-- Orders not arriving on compute → syncagent logs:
-  `kubectl -n default logs deploy/api-syncagent-aws`
-- Realization stuck → `kubectl -n aws-orders get objectstorages,jobs` and the
-  Job pod logs.
+- AcceptAPI not Ready → `kubectl get acceptapi ... -o yaml` (conditions) and
+  broker logs: `kubectl -n resource-broker-system logs deploy/resource-broker`
+- Blueprint not Published → `kubectl get rgd.krop.opendefense.cloud -o yaml`
+  (`BuildFailed` message names the missing schema)
+- Order stuck Provisioning → krop logs
+  (`kubectl -n aws logs deploy/krop-aws-krop-controller`) and the host Job in
+  ns `aws` (watch for the #8 label error).

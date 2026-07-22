@@ -24,10 +24,14 @@ declarative too (OwnerRef GC → terraform destroy), no create-only 409 handling
 ./setup.bash gcp-prod
 ```
 
-Not part of the default `setup` chain: building the adapter image requires the
-ODC-internal source checkout (`PROVIDER_GCP_SRC`, default
-`~/dev/gitlab.opendefense.cloud/odc/cat/cloudapi/provider-gcp`) because the CI
-image in Harbor is amd64-only.
+Not part of the default `setup` chain (Crossplane adds ~2 min to greenfield) —
+opt in with the command above. The adapter image is a public multi-arch build
+(`ghcr.io/ducke/provider-gcp:hackathon-1`, amd64+arm64), so **no ODC access is
+needed to run this**. If an ODC-internal source checkout is present
+(`PROVIDER_GCP_SRC`, default
+`~/dev/gitlab.opendefense.cloud/odc/cat/cloudapi/provider-gcp`), the image is
+built locally and sideloaded instead. The Harbor CI image remains the
+production reference (amd64-only, auth-gated).
 
 Then order with `region: de` (or migrate an existing order):
 

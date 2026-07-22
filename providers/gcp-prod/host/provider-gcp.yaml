@@ -4,9 +4,11 @@
 # claim) and mirrors status + a credentials secret back. Deployment/RBAC mirror
 # the production Flux component (flux-odc-gcp/apps/components/gcp-provider-controller).
 #
-# Image: the CI image in Harbor is amd64-only (x86_64 runners) — setup.bash
-# builds it locally for the host arch and sideloads it into kind, hence
-# imagePullPolicy: Never.
+# Image: public multi-arch build (amd64+arm64) on ghcr — runnable without ODC
+# access. With an ODC-internal source checkout (PROVIDER_GCP_SRC), setup.bash
+# builds locally, tags the same name and sideloads it into kind (IfNotPresent
+# then skips the pull). The Harbor CI image remains the production reference;
+# it is amd64-only and auth-gated, hence this mirror.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -79,8 +81,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: manager
-          image: provider-gcp:hackathon-local
-          imagePullPolicy: Never
+          image: ghcr.io/ducke/provider-gcp:hackathon-1
+          imagePullPolicy: IfNotPresent
           args:
             - --zap-log-level=info
           securityContext:

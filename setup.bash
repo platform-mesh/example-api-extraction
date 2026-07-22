@@ -500,8 +500,10 @@ _provider_azure() {
 # resource is a CloudAPI Bucket (storage.opendefense.cloud) realized by ODC's
 # UNCHANGED production adapter chain: provider-gcp -> GCPBucket (Crossplane
 # claim) -> provider-terraform -> floci-gcp. See providers/gcp-prod/README.md.
-# Not part of the default `setup` chain - it needs the ODC-internal provider-gcp
-# source checkout to build the adapter image (the CI image is amd64-only).
+# Not part of the default `setup` chain (Crossplane adds ~2 min to greenfield);
+# opt in via `setup.bash gcp-prod`. The adapter image is public multi-arch on
+# ghcr - no ODC access needed. With an ODC-internal source checkout present
+# (PROVIDER_GCP_SRC), the image is built locally and sideloaded instead.
 PROVIDER_GCP_SRC="${PROVIDER_GCP_SRC:-$HOME/dev/gitlab.opendefense.cloud/odc/cat/cloudapi/provider-gcp}"
 
 # _host_gcp_prod installs the production realization chain on the kind cluster:
@@ -537,13 +539,15 @@ _host_gcp_prod() {
         || die "GCPBucket XRD not established"
     kubectl::apply "$kind_platform" ./providers/gcp-prod/host/composition-gcpbucket.yaml
 
-    log "Building the provider-gcp adapter locally (the CI image is amd64-only)"
-    [[ -d "$PROVIDER_GCP_SRC" ]] \
-        || die "provider-gcp source not found at $PROVIDER_GCP_SRC - set PROVIDER_GCP_SRC (ODC-internal repo)"
-    docker build -t provider-gcp:hackathon-local "$PROVIDER_GCP_SRC" \
-        || die "provider-gcp image build failed"
-    kind load docker-image provider-gcp:hackathon-local --name "$KIND_CLUSTER" \
-        || die "Failed to load provider-gcp image into kind"
+    if [[ -d "$PROVIDER_GCP_SRC" ]]; then
+        log "Building the provider-gcp adapter locally (source checkout found)"
+        docker build -t ghcr.io/ducke/provider-gcp:hackathon-1 "$PROVIDER_GCP_SRC" \
+            || die "provider-gcp image build failed"
+        kind load docker-image ghcr.io/ducke/provider-gcp:hackathon-1 --name "$KIND_CLUSTER" \
+            || die "Failed to load provider-gcp image into kind"
+    else
+        log "No provider-gcp source checkout - the public ghcr image will be pulled"
+    fi
     kubectl::apply "$kind_platform" ./providers/gcp-prod/host/provider-gcp.yaml
     kubectl::wait "$kind_platform" deployment/provider-gcp gcp-system condition=Available
 }

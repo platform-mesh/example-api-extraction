@@ -1,0 +1,80 @@
+# Dispatch RGD for the SINGLE-CLUSTER topology: one RGD, one Job, the shell
+# branches on spec.region (us -> floci-aws/S3, everything else -> floci-gcp/GCS).
+#
+# Why this exists: kro allows exactly one RGD per GVK on a cluster. The
+# per-provider RGDs in providers/{gcp,aws} are correct for the intended layout
+# (one compute cluster per provider), but on a shared kind cluster the second
+# apply silently replaces the first. This RGD is the single-cluster stand-in for
+# both — apply it INSTEAD of the two per-provider RGDs.
+#
+# S3 needs no aws-cli here: floci accepts an unauthenticated path-style
+# `PUT /<bucket>` (verified locally), so one curl image serves both clouds.
+#
+# status.url: status expressions cannot reference schema, so the full URL is
+# computed in the template (which CAN reference schema) and stamped as a Job
+# annotation, then read back in status — same pattern as the bucket name.
+#
+# LIMIT (PoC): create-only, like the per-provider RGDs.
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: objectstorages.storage.example.io
+spec:
+
+  schema:
+    group: storage.example.io
+    apiVersion: v1alpha1
+    kind: ObjectStorage
+    spec:
+      region: string
+      versioning: boolean
+    status:
+      url: ${createBucket.metadata.?annotations["spike.odc/bucket-url"].orValue("")}
+      status: '${createBucket.status.succeeded > 0 ? "Available" : "Provisioning"}'
+      conditions: ${createBucket.status.conditions}
+
+  resources:
+
+    - id: createBucket
+      readyWhen:
+        - ${createBucket.status.succeeded > 0}
+      template:
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          name: ${schema.metadata.name}-create
+          namespace: ${schema.metadata.namespace}
+          annotations:
+            spike.odc/bucket-name: ${schema.metadata.?annotations["syncagent.kcp.io/remote-object-name"].orValue(schema.metadata.name)}
+            spike.odc/bucket-url: '${(schema.spec.region == "us" ? "s3://" : "gs://") + schema.metadata.?annotations["syncagent.kcp.io/remote-object-name"].orValue(schema.metadata.name)}'
+        spec:
+          backoffLimit: 6
+          template:
+            spec:
+              restartPolicy: Never
+              enableServiceLinks: false
+              containers:
+                - name: create-bucket
+                  image: curlimages/curl:8.11.1
+                  env:
+                    - name: BUCKET
+                      value: ${schema.metadata.?annotations["syncagent.kcp.io/remote-object-name"].orValue(schema.metadata.name)}
+                    - name: REGION
+                      value: ${schema.spec.region}
+                  command: ["/bin/sh", "-c"]
+                  args:
+                    - |
+                      set -eu
+                      if [ "$REGION" = "us" ]; then
+                        echo "creating s3://$BUCKET in floci-aws"
+                        code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "http://floci-aws.floci-aws.svc.cluster.local:4566/$BUCKET")
+                        case "$code" in 200|409) :;; *) echo "unexpected HTTP $code"; exit 1;; esac
+                      else
+                        echo "creating gs://$BUCKET in floci-gcp"
+                        code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+                          'http://floci-gcp.floci-gcp.svc.cluster.local:4588/storage/v1/b?project=test-project' \
+                          -H 'Content-Type: application/json' \
+                          -d "{\"name\":\"$BUCKET\",\"location\":\"EU\"}")
+                        case "$code" in 200|409) :;; *) echo "unexpected HTTP $code"; exit 1;; esac
+                      fi
+                      echo "ok"

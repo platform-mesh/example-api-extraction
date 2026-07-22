@@ -1,7 +1,7 @@
 # PublishedResource: the GCP provider's api-syncagent publishes the kro-generated
-# Object CRD from the compute cluster into the provider workspace
-# (root:providers:gcp) as APIExport "objects". This is exactly the export named by
-# the AcceptAPI (apiExportName: objects), and the broker binds it in its staging
+# ObjectStorage CRD from the compute cluster into the provider workspace
+# (root:providers:gcp) as APIExport "objectstorages". This is exactly the export named by
+# the AcceptAPI (apiExportName: objectstorages), and the broker binds it in its staging
 # workspaces.
 #
 # Bidirectional sync: spec down (kcp->compute), status up (compute->kcp, automatic
@@ -10,12 +10,12 @@
 apiVersion: syncagent.kcp.io/v1alpha1
 kind: PublishedResource
 metadata:
-  name: gcp-objects
+  name: gcp-objectstorages
 spec:
   enableWorkspacePaths: true
   resource:
-    apiGroup: storage.generic.platform-mesh.io
-    kind: Object
+    apiGroup: storage.example.io
+    kind: ObjectStorage
     versions:
       - v1alpha1
   naming:

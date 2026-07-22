@@ -12,7 +12,7 @@ The example providers live in `providers/`, one cloud provider per directory.
 Resources installed into the provider workspace go into `providers/<provider>/manifests/`.
 
 The broker and platform setup happens in `platform/`.
-The example resources deployed for the consumer are in `comsumer/`.
+The example resources deployed for the consumer are in `consumer/`.
 
 The generic API and coordination CRDs are vendored under `config/`.
 

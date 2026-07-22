@@ -1,21 +1,21 @@
-# AcceptAPI: the GCP provider declares that it serves storage.Object orders with
+# AcceptAPI: the GCP provider declares that it serves storage.example.io/ObjectStorage orders with
 # region=eu. Created in the GCP provider workspace (root:providers:gcp); the
 # broker sees it through the virtual workspace of the AcceptAPI export.
 #
 # apiExportName references the APIExport IN the provider workspace under which the
-# api-syncagent publishes the kro-generated Object CRD (see
-# publishedresource-objects.yaml). The broker verifies that this export is
+# api-syncagent publishes the kro-generated ObjectStorage CRD (see
+# publishedresource-objectstorages.yaml). The broker verifies that this export is
 # bindable and binds it in its staging workspaces.
 apiVersion: broker.platform-mesh.io/v1alpha1
 kind: AcceptAPI
 metadata:
-  name: objects.storage.generic.platform-mesh.io
+  name: objectstorages.storage.example.io
 spec:
-  apiExportName: objects
+  apiExportName: objectstorages
   filters:
     - key: region
       valueIn: [eu]
   gvr:
-    group: storage.generic.platform-mesh.io
-    resource: objects
+    group: storage.example.io
+    resource: objectstorages
     version: v1alpha1

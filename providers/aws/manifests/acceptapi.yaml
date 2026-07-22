@@ -1,16 +1,16 @@
-# AcceptAPI: the AWS provider serves storage.Object orders with region=us.
+# AcceptAPI: the AWS provider serves storage.example.io/ObjectStorage orders with region=us.
 # Same structure as the GCP provider, only a different filter -> that's what the
 # broker routes on (eu->GCP / us->AWS) and migrates on region change.
 apiVersion: broker.platform-mesh.io/v1alpha1
 kind: AcceptAPI
 metadata:
-  name: objects.storage.generic.platform-mesh.io
+  name: objectstorages.storage.example.io
 spec:
-  apiExportName: objects
+  apiExportName: objectstorages
   filters:
     - key: region
       valueIn: [us]
   gvr:
-    group: storage.generic.platform-mesh.io
-    resource: objects
+    group: storage.example.io
+    resource: objectstorages
     version: v1alpha1

@@ -1,4 +1,4 @@
-# kro ResourceGraphDefinition: AWS realization of a generic storage.Object.
+# kro ResourceGraphDefinition: AWS realization of a generic storage.example.io/ObjectStorage.
 # Identical structure to the GCP RGD — only the realization target is floci-aws
 # (S3) instead of floci-gcp (GCS). That's the heart of the demo: ONE generic type,
 # two providers each with its own RGD; the broker routes by region.
@@ -7,19 +7,19 @@
 apiVersion: kro.run/v1alpha1
 kind: ResourceGraphDefinition
 metadata:
-  name: objects.storage.generic.platform-mesh.io
+  name: objectstorages.storage.example.io
 spec:
 
   schema:
-    group: storage.generic.platform-mesh.io
+    group: storage.example.io
     apiVersion: v1alpha1
-    kind: Object
+    kind: ObjectStorage
     spec:
       region: string
       versioning: boolean
     status:
-      url: s3://${createBucket.metadata.annotations["spike.odc/bucket-name"]}
-      status: ${createBucket.status.succeeded > 0 ? "Available" : "Provisioning"}
+      url: ${"s3://" + createBucket.metadata.?annotations["spike.odc/bucket-name"].orValue("")}
+      status: '${createBucket.status.succeeded > 0 ? "Available" : "Provisioning"}'
       conditions: ${createBucket.status.conditions}
 
   resources:
@@ -58,7 +58,11 @@ spec:
                   args:
                     - |
                       set -eu
-                      echo "creating s3://${BUCKET} in floci-aws"
+                      echo "creating s3://$BUCKET in floci-aws"
+                      # Idempotent: tolerate an already-existing bucket (cutover never
+                      # deletes buckets in this create-only PoC).
                       aws --endpoint-url http://floci-aws.floci-aws.svc.cluster.local:4566 \
-                        s3api create-bucket --bucket "${BUCKET}"
+                        s3api create-bucket --bucket "$BUCKET" \
+                        || aws --endpoint-url http://floci-aws.floci-aws.svc.cluster.local:4566 \
+                             s3api head-bucket --bucket "$BUCKET"
                       echo "ok"

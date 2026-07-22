@@ -1,7 +1,7 @@
-# kro ResourceGraphDefinition: GCP realization of a generic storage.Object.
-# kro generates the CRD objects.storage.generic.platform-mesh.io from this schema
+# kro ResourceGraphDefinition: GCP realization of a generic storage.example.io/ObjectStorage.
+# kro generates the CRD objectstorages.storage.example.io from this schema
 # block itself on the compute cluster; the api-syncagent publishes it into the
-# provider workspace (APIExport "objects").
+# provider workspace (APIExport "objectstorages").
 #
 # Realization: a Job creates the bucket in floci-gcp via curl (POST /storage/v1/b).
 # Deliberately NO Crossplane — kro relays directly onto a Kubernetes workload,
@@ -13,21 +13,21 @@
 apiVersion: kro.run/v1alpha1
 kind: ResourceGraphDefinition
 metadata:
-  name: objects.storage.generic.platform-mesh.io
+  name: objectstorages.storage.example.io
 spec:
 
   schema:
-    group: storage.generic.platform-mesh.io
+    group: storage.example.io
     apiVersion: v1alpha1
-    kind: Object
+    kind: ObjectStorage
     spec:
       region: string
       versioning: boolean
     status:
       # Status expressions must not reference schema -> the bucket name is stamped
       # as a Job annotation and read back from there (pattern from kropg).
-      url: gs://${createBucket.metadata.annotations["spike.odc/bucket-name"]}
-      status: ${createBucket.status.succeeded > 0 ? "Available" : "Provisioning"}
+      url: ${"gs://" + createBucket.metadata.?annotations["spike.odc/bucket-name"].orValue("")}
+      status: '${createBucket.status.succeeded > 0 ? "Available" : "Provisioning"}'
       conditions: ${createBucket.status.conditions}
 
   resources:
@@ -63,9 +63,16 @@ spec:
                   args:
                     - |
                       set -eu
-                      echo "creating gs://${BUCKET} in floci-gcp"
-                      curl -sf -X POST \
+                      echo "creating gs://$BUCKET in floci-gcp"
+                      # Idempotent create: 409 = bucket already exists. Without this a
+                      # migration BACK to this provider crash-loops - cutover never
+                      # deletes buckets (create-only PoC), so the re-create hits the
+                      # leftover bucket.
+                      code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
                         'http://floci-gcp.floci-gcp.svc.cluster.local:4588/storage/v1/b?project=test-project' \
                         -H 'Content-Type: application/json' \
-                        -d "{\"name\":\"${BUCKET}\",\"location\":\"EU\"}"
-                      echo "ok"
+                        -d "{\"name\":\"$BUCKET\",\"location\":\"EU\"}")
+                      case "$code" in
+                        200|409) echo "ok ($code)";;
+                        *) echo "unexpected HTTP $code"; exit 1;;
+                      esac

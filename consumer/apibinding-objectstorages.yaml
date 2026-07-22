@@ -1,0 +1,41 @@
+# Consumer binds the generic storage.example.io/ObjectStorage API.
+# This API is resource-broker "backed": instances appear in the virtual workspace
+# of the export, and the broker sees and routes them.
+#
+# The export lives in the PROVISIONED resource-broker provider workspace
+# (root:providers:resource-broker-*, created by the providers-operator from the
+# Provider CR in setup.bash). The suffix is dynamic — setup.bash substitutes the
+# real path automatically; when applying manually, adjust
+# spec.reference.export.path first.
+#
+# The permissionClaims are what the broker needs to copy related resources (the
+# result secret, events, the namespace) into the consumer workspace — the claims
+# must be Accepted.
+apiVersion: apis.kcp.io/v1alpha2
+kind: APIBinding
+metadata:
+  name: objectstorages
+spec:
+  reference:
+    export:
+      path: root:providers:resource-broker # adjust: provisioned workspace path (see header)
+      name: objectstorages
+  permissionClaims:
+    - resource: secrets
+      group: ""
+      state: Accepted
+      selector:
+        matchAll: true
+      verbs: ["*"]
+    - resource: events
+      group: ""
+      state: Accepted
+      selector:
+        matchAll: true
+      verbs: ["*"]
+    - resource: namespaces
+      group: ""
+      state: Accepted
+      selector:
+        matchAll: true
+      verbs: ["*"]

@@ -1,0 +1,74 @@
+# krop blueprint: publishes storage.example.io/ObjectStorage from root:gcp and
+# realizes it via a host-target Job against floci-gcp (in-cluster service from
+# kind/manifests). Verified end to end, including broker routing and migration.
+#
+# Notes:
+#   - the Job's metadata.namespace MUST match the krop-controller namespace
+#     (here: gcp, the _provider_gcp release namespace)
+#   - requires the jobs.batch schema CRD in the workspace
+#     (providers/krop/kcp-provider-crd-jobs.yaml, applied by _krop): kro
+#     type-checks children against the workspace API surface, and kcp serves
+#     neither batch/v1 nor Pods
+#   - keep instance names short until opendefensecloud/krop-controller#8 is
+#     fixed (the mangled host name is stamped as a label, capped at 63 bytes)
+#   - create is idempotent (409 = already exists): migrations BACK to this
+#     provider re-create over leftover buckets (create-only PoC)
+#
+# CEL/YAML traps handled: quoted status ternary; status reads the URL from a
+# Job annotation via optional access (status expressions cannot reference
+# schema and are dry-run at build time); $BUCKET not ${BUCKET} in the shell.
+apiVersion: krop.opendefense.cloud/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: objectstorage
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: ObjectStorage
+    group: storage.example.io
+    spec:
+      region: string
+      versioning: boolean
+    status:
+      url: ${createBucket.metadata.?annotations["krop.odc/bucket-url"].orValue("")}
+      status: '${createBucket.status.?succeeded.orValue(0) > 0 ? "Available" : "Provisioning"}'
+  resources:
+    - id: createBucket
+      target: host
+      readyWhen:
+        - ${createBucket.status.?succeeded.orValue(0) > 0}
+      template:
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          name: ${schema.metadata.name}-create
+          namespace: gcp # must match the krop-controller namespace
+          annotations:
+            # status expressions cannot reference schema -> precompute the URL
+            # here (templates CAN reference schema) and read it back in status.
+            krop.odc/bucket-url: ${"gs://" + schema.metadata.name}
+        spec:
+          backoffLimit: 6
+          template:
+            spec:
+              restartPolicy: Never
+              enableServiceLinks: false
+              containers:
+                - name: create-bucket
+                  image: curlimages/curl:8.11.1
+                  env:
+                    - name: BUCKET
+                      value: ${schema.metadata.name}
+                  command: ["/bin/sh", "-c"]
+                  args:
+                    - |
+                      set -eu
+                      echo "creating gs://$BUCKET in floci-gcp"
+                      code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+                        'http://floci-gcp.floci-gcp.svc.cluster.local:4588/storage/v1/b?project=test-project' \
+                        -H 'Content-Type: application/json' \
+                        -d "{\"name\":\"$BUCKET\",\"location\":\"EU\"}")
+                      case "$code" in
+                        200|409) echo "ok ($code)";;
+                        *) echo "unexpected HTTP $code"; exit 1;;
+                      esac

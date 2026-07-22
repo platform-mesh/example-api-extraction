@@ -1,15 +1,15 @@
 # PublishedResource for the AWS provider — identical to the GCP side, only the
-# target namespace on the compute cluster is aws-orders. Publishes the Object CRD
-# as APIExport "objects" in root:providers:aws.
+# target namespace on the compute cluster is aws-orders. Publishes the ObjectStorage CRD
+# as APIExport "objectstorages" in root:providers:aws.
 apiVersion: syncagent.kcp.io/v1alpha1
 kind: PublishedResource
 metadata:
-  name: aws-objects
+  name: aws-objectstorages
 spec:
   enableWorkspacePaths: true
   resource:
-    apiGroup: storage.generic.platform-mesh.io
-    kind: Object
+    apiGroup: storage.example.io
+    kind: ObjectStorage
     versions:
       - v1alpha1
   naming:

@@ -696,10 +696,80 @@ _setup_prod_providers() {
     _provider_azure_prod
 }
 
+# _teardown_krop <provider> removes a krop-controller deployed by _krop: the
+# kustomize release + admin RBAC on the host, and the provider namespace.
+_teardown_krop() {
+    local provider="$1"
+    log "Removing krop-controller for $provider (host)"
+    kustomize build --enable-helm "./providers/krop/$provider" \
+        | kubectl --kubeconfig "$kind_platform" delete -f- --ignore-not-found --wait=false \
+        || log "krop-controller for $provider already gone"
+    kubectl --kubeconfig "$kind_platform" delete namespace "$provider" \
+        --ignore-not-found --wait=false || true
+}
+
+# teardown-mock reverses _setup_mock_providers: the gcp/aws/azure provider
+# workspaces (cascades blueprints/exports/bindings), their krop-controllers +
+# namespaces, and the floci backends.
+_teardown_mock_providers() {
+    local p
+    for p in gcp aws azure; do
+        kcp::delete_workspace "$kcp_admin" "$p"
+        _teardown_krop "$p"
+    done
+    log "Removing floci backends"
+    kubectl --kubeconfig "$kind_platform" delete -k ./kind/manifests \
+        --ignore-not-found --wait=false || log "floci already gone"
+}
+
+# teardown-prod reverses _setup_prod_providers: first GC the real cloud resources
+# (delete ObjectStorage orders so ASO/Crossplane tear down via owner refs), then
+# the provider workspaces + krop-controllers, then the host operators.
+_teardown_prod_providers() {
+    log "Deleting real cloud resources (ASO/Crossplane) before removing operators"
+    # Best-effort: delete any ObjectStorage orders so the broker unwinds them.
+    KUBECONFIG="$ws_consumer" kubectl delete objectstorage --all -A --ignore-not-found --wait=false 2>/dev/null || true
+    # Authoritative GC for Azure: delete the ASO ResourceGroups on the host - owner
+    # refs cascade to StorageAccount -> BlobService -> Container, and ASO deletes
+    # the real Azure resources. Do this directly so it works even without a
+    # consumer workspace (broker-routed orders live in staging).
+    kubectl --kubeconfig "$kind_platform" delete resourcegroups.resources.azure.com \
+        --all -A --ignore-not-found --wait=false 2>/dev/null || true
+    log "Waiting for ASO Azure resources to be deleted (owner-ref GC)"
+    kubectl --kubeconfig "$kind_platform" wait --for=delete \
+        storageaccounts.storage.azure.com,resourcegroups.resources.azure.com \
+        -A --all --timeout="$timeout" 2>/dev/null \
+        || log "no ASO resources pending (or timed out - check the Azure portal / az)"
+
+    local p
+    for p in gcp-prod azure-prod; do
+        kcp::delete_workspace "$kcp_admin" "$p"
+        _teardown_krop "$p"
+    done
+
+    log "Uninstalling Azure Service Operator (host)"
+    helm --kubeconfig "$kind_platform" uninstall aso2 \
+        -n azureserviceoperator-system --ignore-not-found --wait || true
+    kubectl --kubeconfig "$kind_platform" delete namespace azureserviceoperator-system \
+        --ignore-not-found --wait=false || true
+
+    log "Uninstalling Crossplane + provider-terraform (host)"
+    helm --kubeconfig "$kind_platform" uninstall crossplane \
+        -n crossplane-system --ignore-not-found --wait || true
+    kubectl --kubeconfig "$kind_platform" delete namespace crossplane-system gcp-system \
+        --ignore-not-found --wait=false || true
+
+    # cert-manager is shared/pre-existing from the Platform Mesh local-setup - we
+    # skipped installing it, so we do not remove it.
+    log "Leaving cert-manager in place (shared with the local-setup)"
+}
+
 case "${1:-setup}" in
     (setup) _setup ;;
     (setup-mock) _kubeconfig; _setup_mock_providers ;;
     (setup-prod) _kubeconfig; _setup_prod_providers ;;
+    (teardown-mock) _kubeconfig; _kcp; _teardown_mock_providers ;;
+    (teardown-prod) _kubeconfig; _kcp; _teardown_prod_providers ;;
     (kubeconfig) _kubeconfig; _kcp ;;
     (broker) _kubeconfig; _kcp; _broker ;;
     (gcp) _kubeconfig; _kcp; _provider_gcp ;;
@@ -709,5 +779,5 @@ case "${1:-setup}" in
     (krop-providers) _kubeconfig; _kcp; _provider_gcp; _provider_aws; _provider_azure ;;
     (gcp-prod) _kubeconfig; _kcp; _host_gcp_prod; _provider_gcp_prod ;;
     (azure-prod) _kubeconfig; _kcp; _host_azure_prod; _provider_azure_prod ;;
-    (*) die "Unknown command: $1 (want: setup | kubeconfig | broker | gcp | aws | syncagent-gcp | consumer | krop-providers | gcp-prod | azure-prod)" ;;
+    (*) die "Unknown command: $1 (want: setup | setup-mock | setup-prod | teardown-mock | teardown-prod | kubeconfig | broker | gcp | aws | syncagent-gcp | consumer | krop-providers | gcp-prod | azure-prod)" ;;
 esac

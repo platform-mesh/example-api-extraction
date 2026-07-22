@@ -32,8 +32,17 @@ spec:
                     # from ./platform/object-storage-migrator
                     image: localhost/object-storage-migrator:latest
                     imagePullPolicy: Never
-                    env:
-                      - name: ORIGIN_URI
-                        value: ${from.status.url}
-                      - name: DESTINATION_URI
-                        value: ${to.status.url}
+                    volumeMounts:
+                      - name: origin
+                        mountPath: /secrets/origin
+                        readOnly: true
+                      - name: dest
+                        mountPath: /secrets/dest
+                        readOnly: true
+                volumes:
+                  - name: origin
+                    secret:
+                      secretName: from-${from.status.relatedResources.credentials.name}
+                  - name: dest
+                    secret:
+                      secretName: to-${to.status.relatedResources.credentials.name}

@@ -1,0 +1,6 @@
+apiVersion: example.io/v1alpha1
+kind: ExampleRGD
+metadata:
+  name: test
+spec:
+  value: mytest

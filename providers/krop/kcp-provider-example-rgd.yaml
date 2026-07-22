@@ -1,0 +1,58 @@
+# an example krop RGD to install into the provider workspace
+# apply with kubectl apply
+# to test bind the cm in the same workspace, but update the
+# spec.reference.export.path
+#   kubectl apply -f ./providers/krop/kcp-provider-example-apibinding.yaml
+# and apply the test resource
+#   kubectl apply -f ./providers/krop/kcp-provider-example-obj.yaml
+# the resources will then show up in the respective control planes:
+# provider ws:
+#   NAME                                                  DATA   AGE
+#   1xfkgqfw8wz3dsww-test-test-provider-cm-2470997c6971   1      4m30s
+# host / kind cluster:
+apiVersion: krop.opendefense.cloud/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: small-example
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: ExampleRGD
+    group: example.io
+    spec:
+      value: string
+    status:
+      providerConfigMapName: ${providerCM.metadata.name}
+      consumerConfigMapName: ${consumerCM.metadata.name}
+      hostConfigMapName: ${hostCM.metadata.name}
+  resources:
+    - id: providerCM
+      target: provider
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: ${schema.metadata.name}-provider-cm
+          namespace: default
+        data:
+          value: "provider ${schema.spec.value}"
+    - id: consumerCM
+      target: consumer
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: ${schema.metadata.name}-consumer-cm
+          namespace: default
+        data:
+          value: "consumer ${schema.spec.value}"
+    - id: hostCM
+      target: host
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: ${schema.metadata.name}-host-cm
+          namespace: gcp # the namespace must match the namespace the controller runs in
+        data:
+          value: "host ${schema.spec.value}"

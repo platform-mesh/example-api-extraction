@@ -1,0 +1,16 @@
+apiVersion: apis.kcp.io/v1alpha2
+kind: APIBinding
+metadata:
+  name: examplergds.example.io
+spec:
+  reference:
+    export:
+      name: examplergds.example.io
+      path: root:gcp # this must be adjusted per provider
+  permissionClaims:
+    - group: ""
+      resource: configmaps
+      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+      selector:
+        matchAll: true
+      state: Accepted

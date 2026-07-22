@@ -39,6 +39,14 @@ spec:
     status:
       url: ${bucket.status.?endpoint.orValue("")}
       status: '${bucket.status.?endpoint.orValue("") != "" ? "Available" : "Provisioning"}'
+      relatedResources:
+        credentials:
+          gvk:
+            group: '${credentials.apiVersion.contains("/") ? credentials.apiVersion.split("/")[0] : ""}'
+            version: '${credentials.apiVersion.contains("/") ? credentials.apiVersion.split("/")[1] : credentials.apiVersion}'
+            kind: ${credentials.kind}
+          name: ${credentials.metadata.name}
+          namespace: ${credentials.metadata.namespace}
   resources:
     - id: bucket
       target: host
@@ -55,3 +63,22 @@ spec:
           region: ${schema.spec.region}
           storageClass: standard
           description: ordered via storage.example.io (broker-routed, region de)
+    - id: gcpCredentials
+      target: host
+      externalRef:
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: gcp-credentials
+          namespace: crossplane-system
+    - id: credentials
+      target: consumer
+      template:
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: ${schema.metadata.name}-credentials
+          namespace: ${schema.metadata.namespace}
+        stringData:
+          url: ${bucket.status.endpoint}
+          credentials: ${string(gcpCredentials.data.credentials)}

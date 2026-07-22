@@ -271,6 +271,10 @@ helm::install() {
 helm::install::certmanager() {
     local kubeconfig="$1"
     shift 1
+    if kubectl --kubeconfig "$kubeconfig" get crd certificates.cert-manager.io >/dev/null 2>&1; then
+        log "cert-manager already installed - skipping"
+        return 0
+    fi
     helm::install "$kubeconfig" \
         cert-manager oci://quay.io/jetstack/charts/cert-manager:v1.19.1 \
           --set crds.enabled=true \

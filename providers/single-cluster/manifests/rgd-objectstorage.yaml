@@ -67,12 +67,14 @@ spec:
                       set -eu
                       if [ "$REGION" = "us" ]; then
                         echo "creating s3://$BUCKET in floci-aws"
-                        curl -sf -X PUT "http://floci-aws.floci-aws.svc.cluster.local:4566/$BUCKET"
+                        code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "http://floci-aws.floci-aws.svc.cluster.local:4566/$BUCKET")
+                        case "$code" in 200|409) :;; *) echo "unexpected HTTP $code"; exit 1;; esac
                       else
                         echo "creating gs://$BUCKET in floci-gcp"
-                        curl -sf -X POST \
+                        code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
                           'http://floci-gcp.floci-gcp.svc.cluster.local:4588/storage/v1/b?project=test-project' \
                           -H 'Content-Type: application/json' \
-                          -d "{\"name\":\"$BUCKET\",\"location\":\"EU\"}"
+                          -d "{\"name\":\"$BUCKET\",\"location\":\"EU\"}")
+                        case "$code" in 200|409) :;; *) echo "unexpected HTTP $code"; exit 1;; esac
                       fi
                       echo "ok"

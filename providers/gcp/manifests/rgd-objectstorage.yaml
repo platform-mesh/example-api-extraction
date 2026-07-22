@@ -64,8 +64,15 @@ spec:
                     - |
                       set -eu
                       echo "creating gs://$BUCKET in floci-gcp"
-                      curl -sf -X POST \
+                      # Idempotent create: 409 = bucket already exists. Without this a
+                      # migration BACK to this provider crash-loops - cutover never
+                      # deletes buckets (create-only PoC), so the re-create hits the
+                      # leftover bucket.
+                      code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
                         'http://floci-gcp.floci-gcp.svc.cluster.local:4588/storage/v1/b?project=test-project' \
                         -H 'Content-Type: application/json' \
-                        -d "{\"name\":\"$BUCKET\",\"location\":\"EU\"}"
-                      echo "ok"
+                        -d "{\"name\":\"$BUCKET\",\"location\":\"EU\"}")
+                      case "$code" in
+                        200|409) echo "ok ($code)";;
+                        *) echo "unexpected HTTP $code"; exit 1;;
+                      esac

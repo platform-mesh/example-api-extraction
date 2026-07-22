@@ -59,6 +59,10 @@ spec:
                     - |
                       set -eu
                       echo "creating s3://$BUCKET in floci-aws"
+                      # Idempotent: tolerate an already-existing bucket (cutover never
+                      # deletes buckets in this create-only PoC).
                       aws --endpoint-url http://floci-aws.floci-aws.svc.cluster.local:4566 \
-                        s3api create-bucket --bucket "$BUCKET"
+                        s3api create-bucket --bucket "$BUCKET" \
+                        || aws --endpoint-url http://floci-aws.floci-aws.svc.cluster.local:4566 \
+                             s3api head-bucket --bucket "$BUCKET"
                       echo "ok"

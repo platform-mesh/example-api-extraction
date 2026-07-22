@@ -1,0 +1,107 @@
+# krop blueprint: publishes storage.example.io/ObjectStorage from root:azure-prod
+# and realizes it via Azure Service Operator (ASO) against REAL Azure — the
+# host-target resources are ASO CRDs (resources.azure.com + storage.azure.com),
+# reconciled by the ASO controller through Azure ARM. The blueprint IS the adapter
+# between the standard API and ASO's Azure types: no operator code, no Crossplane.
+#
+# Chain (ASO spec.owner links each child to its parent; OwnerRef GC on delete):
+#   ResourceGroup -> StorageAccount -> StorageAccountsBlobService (Azure name
+#   "default", the only blob service) -> StorageAccountsBlobServicesContainer.
+#   (ResourceGroup is served as v1api20200601; the storage types as v20250601.)
+#
+# Notes:
+#   - every resource's metadata.namespace MUST match the krop-controller namespace
+#     (here: azure-prod, the _provider_azure_prod release namespace)
+#   - requires the four ASO CRDs in the workspace (applied by _provider_azure_prod):
+#     kro type-checks children against the workspace API surface
+#   - Azure storage account names are GLOBALLY unique, 3-24 chars, lowercase
+#     alphanumeric only (no dashes). azureName below derives such a name from the
+#     order: strip dashes, lowercase, prefix "st", and append a uid-derived suffix
+#     for global uniqueness -> the resulting URL is
+#     https://st<order><suffix>.blob.core.windows.net/<container>. This is the
+#     provider's naming policy (cf. gcp-prod's gs://<order>-<hash6>). Keep order
+#     names short so st<order><suffix> stays <= 24 chars.
+#   - the blob endpoint lives on the StorageAccount status
+#     (status.primaryEndpoints.blob), so readyWhen / status.url gate on the account.
+#
+# CEL/YAML traps handled (same as gcp-prod): quoted status ternary; status
+# expressions cannot reference schema and are dry-run at build time -> only optional
+# access (.?/orValue) on host resource status.
+apiVersion: krop.opendefense.cloud/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: objectstorage
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: ObjectStorage
+    group: storage.example.io
+    spec:
+      region: string
+      versioning: boolean
+    status:
+      url: ${account.status.?primaryEndpoints.blob.orValue("")}
+      status: '${account.status.?primaryEndpoints.blob.orValue("") != "" ? "Available" : "Provisioning"}'
+  resources:
+    - id: resourceGroup
+      target: host
+      template:
+        apiVersion: resources.azure.com/v1api20200601
+        kind: ResourceGroup
+        metadata:
+          name: ${schema.metadata.name}
+          namespace: azure-prod # must match the krop-controller namespace
+        spec:
+          location: germanywestcentral # nearest region accepting new accounts; "nl" carve-out routes here
+    - id: account
+      target: host
+      readyWhen:
+        - ${account.status.?primaryEndpoints.blob.orValue("") != ""}
+      template:
+        apiVersion: storage.azure.com/v20250601
+        kind: StorageAccount
+        metadata:
+          name: ${schema.metadata.name}
+          namespace: azure-prod
+        spec:
+          # globally-unique, ARM-valid account name derived from the order name +
+          # uid suffix (see header). azureName decouples the Azure name from the
+          # (dash-containing) k8s object name.
+          azureName: ${("st" + schema.metadata.name.replace("-", "") + schema.metadata.uid.replace("-", "")).lowerAscii().substring(0, 24)}
+          location: germanywestcentral
+          kind: StorageV2
+          sku:
+            name: Standard_LRS
+          accessTier: Hot
+          owner:
+            # reference the ResourceGroup's actual (krop-materialized) name, not
+            # schema.metadata.name - krop mangles the host object names, so ASO
+            # owner refs must point at the real object name. Also makes kro order
+            # creation: account after resourceGroup.
+            name: ${resourceGroup.metadata.name}
+    - id: blobService
+      target: host
+      template:
+        apiVersion: storage.azure.com/v20250601
+        kind: StorageAccountsBlobService
+        metadata:
+          name: ${schema.metadata.name}
+          namespace: azure-prod
+        spec:
+          # the blob service is a singleton named "default" under the account -
+          # ASO sets that automatically, there is no azureName field to override
+          owner:
+            name: ${account.metadata.name}
+          isVersioningEnabled: ${schema.spec.versioning}
+    - id: container
+      target: host
+      template:
+        apiVersion: storage.azure.com/v20250601
+        kind: StorageAccountsBlobServicesContainer
+        metadata:
+          name: ${schema.metadata.name}
+          namespace: azure-prod
+        spec:
+          azureName: ${schema.metadata.name}
+          owner:
+            name: ${blobService.metadata.name}

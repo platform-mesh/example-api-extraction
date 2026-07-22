@@ -1,0 +1,18 @@
+# AcceptAPI: registers the krop-published azure-prod provider (Azure Service
+# Operator -> Azure ARM -> real Azure) with the broker for region nl. Region
+# carve-out: the job-based azure provider keeps ap, nl is realized by ASO against
+# real Azure (West Europe, Amsterdam). Created in root:azure-prod; requires the
+# acceptapis binding there (setup.bash does both).
+apiVersion: broker.platform-mesh.io/v1alpha1
+kind: AcceptAPI
+metadata:
+  name: objectstorages.storage.example.io
+spec:
+  apiExportName: objectstorages.storage.example.io
+  filters:
+    - key: region
+      valueIn: [nl]
+  gvr:
+    group: storage.example.io
+    resource: objectstorages
+    version: v1alpha1

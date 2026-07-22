@@ -1,0 +1,72 @@
+# RBAC and Deployment for the REAL provider-gcp controller (built from the
+# sibling ../provider-gcp checkout, see hack/run.bash's provider-gcp:*
+# commands). Unlike the other providers/ in this PoC, this one is not our
+# own code - it is the actual production translation controller
+# (Bucket -> GCPBucket) for storage.opendefense.cloud, running unmodified.
+#
+# imagePullPolicy: Never because hack/run.bash loads the locally built
+# image straight into the kind node (`kind load docker-image`); no
+# registry involved.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: provider-gcp
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: provider-gcp
+  namespace: provider-gcp
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: provider-gcp
+rules:
+  - apiGroups: ["storage.opendefense.cloud"]
+    resources: ["buckets"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["storage.opendefense.cloud"]
+    resources: ["buckets/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["gcp.opendefense.cloud"]
+    resources: ["gcpbuckets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: provider-gcp
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: provider-gcp
+subjects:
+  - kind: ServiceAccount
+    name: provider-gcp
+    namespace: provider-gcp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: provider-gcp
+  namespace: provider-gcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: provider-gcp}
+  template:
+    metadata:
+      labels: {app: provider-gcp}
+    spec:
+      serviceAccountName: provider-gcp
+      containers:
+        - name: provider-gcp
+          image: provider-gcp:dev
+          imagePullPolicy: Never

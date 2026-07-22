@@ -1,0 +1,13 @@
+# etcd for kcp, managed by gardener's etcd-druid (installed by `task setup`).
+apiVersion: druid.gardener.cloud/v1alpha1
+kind: Etcd
+metadata:
+  name: kcp-etcd
+spec:
+  labels:
+    app: kcp-etcd
+  etcd:
+    metrics: basic
+  backup:
+    port: 8080
+  replicas: 1

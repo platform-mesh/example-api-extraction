@@ -19,7 +19,7 @@ spec:
       versioning: boolean
     status:
       url: s3://${createBucket.metadata.annotations["spike.odc/bucket-name"]}
-      status: ${createBucket.status.succeeded > 0 ? "Available" : "Provisioning"}
+      status: '${createBucket.status.succeeded > 0 ? "Available" : "Provisioning"}'
       conditions: ${createBucket.status.conditions}
 
   resources:

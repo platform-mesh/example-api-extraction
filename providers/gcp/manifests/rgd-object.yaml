@@ -27,7 +27,7 @@ spec:
       # Status expressions must not reference schema -> the bucket name is stamped
       # as a Job annotation and read back from there (pattern from kropg).
       url: gs://${createBucket.metadata.annotations["spike.odc/bucket-name"]}
-      status: ${createBucket.status.succeeded > 0 ? "Available" : "Provisioning"}
+      status: '${createBucket.status.succeeded > 0 ? "Available" : "Provisioning"}'
       conditions: ${createBucket.status.conditions}
 
   resources:

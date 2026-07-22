@@ -1,2 +1,6 @@
 /bin
 *.kubeconfig
+
+# runtime artifacts of hack/run.bash
+kubeconfigs/
+*.log

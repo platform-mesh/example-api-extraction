@@ -1,0 +1,4 @@
+resources:
+  - etcd.yaml
+  - issuer.yaml
+  - kcp.yaml

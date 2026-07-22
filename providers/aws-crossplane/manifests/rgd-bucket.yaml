@@ -1,0 +1,54 @@
+# REFERENCE ONLY - not applied by the PoC setup and untested.
+#
+# Translation: generic Bucket (storage.opendefense.cloud) -> Crossplane AWS
+# managed resource (Bucket.s3.aws.upbound.io). Shows that adding a provider
+# is exactly one file like this one; the consumer-facing schema block is the
+# same as in the minio and gcp-crossplane rgd-bucket.yaml files.
+#
+# To make this runnable you need Crossplane with upbound provider-aws-s3 and
+# a ProviderConfig named "default". The floci AWS emulator
+# (floci/floci:latest, port 4566, https://floci.io) can simulate AWS
+# locally: provider-aws supports endpoint overrides directly in its
+# ProviderConfig (spec.endpoint.url), no runtime-config tricks needed.
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: buckets.storage.opendefense.cloud
+spec:
+  schema:
+    group: storage.opendefense.cloud
+    apiVersion: v1alpha1
+    kind: Bucket
+    spec:
+      bucketName: string | required=true
+      bucketSize: integer | default=20
+      description: string
+      encryption: boolean | default=false
+      region: string
+      storageClass: string | default="Standard"
+      providerConfig:
+        provider: string | default="aws"
+    status:
+      bucketId: ${schema.spec.bucketName}
+      allocatedRegion: ${s3bucket.spec.forProvider.region}
+      endpoint: ${"https://" + schema.spec.bucketName + ".s3.amazonaws.com"}
+      conditions: ${s3bucket.status.conditions}
+
+  resources:
+    - id: s3bucket
+      template:
+        apiVersion: s3.aws.upbound.io/v1beta1
+        kind: Bucket
+        metadata:
+          name: ${schema.spec.bucketName}
+          annotations:
+            crossplane.io/external-name: ${schema.spec.bucketName}
+        spec:
+          forProvider:
+            # S3 has no direct equivalent of the generic storageClass at
+            # bucket level (it is per-object / lifecycle-rule based);
+            # a full translation would emit a BucketLifecycleConfiguration
+            # resource here as well.
+            region: '${schema.spec.region == "" ? "eu-central-1" : schema.spec.region}'
+          providerConfigRef:
+            name: default

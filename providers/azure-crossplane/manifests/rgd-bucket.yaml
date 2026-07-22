@@ -1,0 +1,68 @@
+# REFERENCE ONLY - not applied by the PoC setup and untested.
+#
+# Translation: generic Bucket (storage.opendefense.cloud) -> Crossplane
+# Azure managed resources. Azure has no standalone "bucket": object storage
+# is a Container inside a StorageAccount, so this translation emits TWO
+# vendor resources - a good example of a non-1:1 mapping.
+#
+# To make this runnable you need Crossplane with upbound
+# provider-azure-storage and a ProviderConfig named "default". The floci
+# Azure emulator (floci/floci-az:latest, port 4577, https://floci.io) can
+# simulate Azure Blob storage locally.
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: buckets.storage.opendefense.cloud
+spec:
+  schema:
+    group: storage.opendefense.cloud
+    apiVersion: v1alpha1
+    kind: Bucket
+    spec:
+      bucketName: string | required=true
+      bucketSize: integer | default=20
+      description: string
+      encryption: boolean | default=false
+      region: string
+      storageClass: string | default="Standard"
+      providerConfig:
+        provider: string | default="azure"
+    status:
+      bucketId: ${schema.spec.bucketName}
+      allocatedRegion: ${account.spec.forProvider.location}
+      endpoint: ${"https://" + account.metadata.name + ".blob.core.windows.net/" + schema.spec.bucketName}
+      conditions: ${container.status.conditions}
+
+  resources:
+    # Azure storage account names: 3-24 chars, lowercase alphanumeric,
+    # globally unique. A real translation needs a naming strategy; the
+    # reference simply reuses the bucket name.
+    - id: account
+      template:
+        apiVersion: storage.azure.upbound.io/v1beta1
+        kind: Account
+        metadata:
+          name: ${schema.spec.bucketName}
+        spec:
+          forProvider:
+            resourceGroupName: opendefense-poc
+            location: '${schema.spec.region == "" ? "westeurope" : schema.spec.region}'
+            accountTier: Standard
+            accountReplicationType: LRS
+            # The generic storageClass maps to the Azure access tier.
+            accessTier: '${schema.spec.storageClass == "Standard" ? "Hot" : "Cool"}'
+          providerConfigRef:
+            name: default
+
+    - id: container
+      template:
+        apiVersion: storage.azure.upbound.io/v1beta1
+        kind: Container
+        metadata:
+          name: ${schema.spec.bucketName}
+        spec:
+          forProvider:
+            storageAccountName: ${account.metadata.name}
+            containerAccessType: private
+          providerConfigRef:
+            name: default

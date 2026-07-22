@@ -1,0 +1,59 @@
+# api-syncagent configuration for the REAL provider-gcp path.
+#
+# Identical to providers/floci-aws/manifests/publishedresource-buckets.yaml
+# EXCEPT for the related-resource path: the vendored SDK's
+# status.bucketSecret is a plain STRING (the secret's name), not an object
+# with a nested .name field like our own api/opendefense/v1alpha1 schema.
+# Using the floci-aws PublishedResource's path (status.bucketSecret.name)
+# against the real schema silently resolves to nothing - the agent does not
+# error, it just never finds a secret to sync, and the credentials Secret
+# never reaches the consumer workspace. Found by actually running
+# `task provider-gcp` end to end; see docs/DEVELOPMENT.md.
+#
+# Applying this re-applies the SAME PublishedResource object (same name,
+# same CRD is being watched) - the agent picks up the corrected path live,
+# no restart needed.
+apiVersion: syncagent.kcp.io/v1alpha1
+kind: PublishedResource
+metadata:
+  name: buckets.storage.opendefense.cloud
+spec:
+  resource:
+    kind: Bucket
+    apiGroup: storage.opendefense.cloud
+    versions: [v1alpha1]
+  related:
+    - identifier: credentials
+      origin: service
+      kind: Secret
+      object:
+        reference:
+          path: status.bucketSecret
+---
+# RBAC for the agent's service account on the published resource. Identical
+# to the floci-aws one; kept here too so this provider's manifests are
+# self-contained.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: api-syncagent-storage:buckets
+rules:
+  - apiGroups: [storage.opendefense.cloud]
+    resources: [buckets]
+    verbs: [get, list, watch, create, update, delete, patch]
+  - apiGroups: [storage.opendefense.cloud]
+    resources: [buckets/status]
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: api-syncagent-storage:buckets
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: api-syncagent-storage:buckets
+subjects:
+  - kind: ServiceAccount
+    name: api-syncagent-storage
+    namespace: default

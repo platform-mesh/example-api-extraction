@@ -1,0 +1,220 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: buckets.storage.opendefense.cloud
+spec:
+  group: storage.opendefense.cloud
+  names:
+    kind: Bucket
+    listKind: BucketList
+    plural: buckets
+    singular: bucket
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.bucketName
+      name: Bucket
+      type: string
+    - jsonPath: .status.allocatedRegion
+      name: Region
+      type: string
+    - jsonPath: .status.endpoint
+      name: Endpoint
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Bucket is the Schema for the buckets API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of the Bucket
+            properties:
+              bucketName:
+                description: BucketName is the name of the bucket.
+                example: my-bucket
+                minLength: 1
+                type: string
+              bucketPolicy:
+                description: BucketPolicy holds a provider-neutral bucket policy document.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              bucketSize:
+                default: 20
+                description: BucketSize defines the size (in GB) of the bucket.
+                example: 50
+                format: int64
+                type: integer
+              description:
+                description: Description of bucket contents.
+                example: my-bucket-for-backups
+                type: string
+              encryption:
+                default: false
+                description: Encryption enables server-side encryption at rest.
+                example: true
+                type: boolean
+              permissions:
+                description: Permissions holds access permission definitions for the
+                  bucket.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              providerConfig:
+                description: |-
+                  ProviderConfig holds optional, provider-specific Bucket settings.
+                  It is intentionally schemaless: each provider documents the keys it
+                  understands. The MinIO PoC provider understands
+                  {"provider": "<name>"} to select one of its configured backends,
+                  which is also the switch used during a migration cutover.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              region:
+                description: Region defines the region where the bucket is stored.
+                example: de-boe-1
+                type: string
+              storageClass:
+                default: Standard
+                description: |-
+                  StorageClass defines how objects in the bucket are stored and
+                  determines the SLA and the cost of storage.
+                enum:
+                - Standard
+                - Nearline
+                - Coldline
+                - Archive
+                type: string
+            required:
+            - bucketName
+            type: object
+          status:
+            description: status defines the observed state of the Bucket
+            properties:
+              allocatedRegion:
+                description: AllocatedRegion is the region where the bucket is stored.
+                type: string
+              bucketId:
+                description: BucketID is the unique identifier assigned to the bucket.
+                example: obs-e2f5g8
+                type: string
+              bucketSecret:
+                description: |-
+                  BucketSecret references the Kubernetes Secret containing the bucket
+                  credentials. The Secret lives in the same namespace as the Bucket.
+                properties:
+                  name:
+                    description: Name is the metadata.name of the Secret resource.
+                    example: example-secret
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
+              conditions:
+                description: Conditions represent the latest available observations.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              encryptionStatus:
+                description: EncryptionStatus holds the observed encryption state.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              endpoint:
+                description: Endpoint is the S3-compatible endpoint URL.
+                example: https://my-bucket.s3.provider.io
+                type: string
+              providerStatus:
+                description: |-
+                  ProviderStatus holds provider-specific observed state that has no
+                  generic representation. The MinIO PoC provider records
+                  {"provider": "<name>"} here so a provider switch (migration cutover)
+                  is observable.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

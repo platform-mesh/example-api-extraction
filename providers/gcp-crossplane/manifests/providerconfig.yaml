@@ -1,0 +1,28 @@
+# ProviderConfig used by the GCS managed resources emitted by rgd-gcp.yaml
+# (providerConfigRef.name: default).
+#
+# Emulator mode (default here): floci-gcp needs no authentication, so no
+# credentials are configured.
+#
+# Real GCP mode: replace credentials.source with a Secret and set your
+# project id, e.g.
+#
+#   kubectl -n crossplane-system create secret generic gcp-creds \
+#       --from-file=credentials.json=$HOME/gcp-service-account.json
+#
+#   spec:
+#     projectID: my-real-project
+#     credentials:
+#       source: Secret
+#       secretRef:
+#         namespace: crossplane-system
+#         name: gcp-creds
+#         key: credentials.json
+apiVersion: gcp.upbound.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: default
+spec:
+  projectID: floci-local
+  credentials:
+    source: None

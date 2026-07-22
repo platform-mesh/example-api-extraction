@@ -1,0 +1,74 @@
+# Translation: generic Bucket (storage.opendefense.cloud) -> S3Bucket
+# (s3.opendefense.internal, served by the S3 vendor operator in this repo,
+# which provisions on the floci-aws S3 emulator).
+#
+# This ResourceGraphDefinition (RGD) *defines* the consumer-facing Bucket CRD
+# (see spec.schema below - it follows the opendefense.cloud Object Storage
+# API reference; api/opendefense/v1alpha1/bucket_types.go is the canonical
+# typed definition) and instantiates one vendor-side S3Bucket per Bucket.
+# kro keeps spec and status in sync in both directions via the ${...} CEL
+# expressions.
+#
+# Only ONE RGD may define the Bucket kind on a cluster. To fulfill Buckets
+# with GCP/Crossplane instead, apply
+# providers/gcp-crossplane/manifests/rgd-bucket.yaml INSTEAD of this file.
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: buckets.storage.opendefense.cloud
+spec:
+
+  schema:
+    group: storage.opendefense.cloud
+    apiVersion: v1alpha1
+    kind: Bucket
+
+    spec:
+      bucketName: string | required=true
+      bucketSize: integer | default=20
+      description: string
+      encryption: boolean | default=false
+      region: string | default=""
+      storageClass: string | default="Standard"
+      # ProviderConfig carries provider-specific settings; "provider"
+      # selects one of the operator's configured backends
+      # (hack/providers.yaml). With a single backend the default is all
+      # you need.
+      providerConfig:
+        provider: string | default="aws"
+
+    # The consumer-facing status, filled from the vendor resource.
+    status:
+      bucketId: ${s3bucket.status.bucketId}
+      allocatedRegion: ${s3bucket.status.allocatedRegion}
+      endpoint: ${s3bucket.status.endpoint}
+      bucketSecret:
+        name: ${s3bucket.status.secretName}
+      conditions: ${s3bucket.status.conditions}
+
+  resources:
+
+    # The vendor-side bucket. This is where the generic API is translated
+    # into the vendor's vocabulary. bucketSize, description and
+    # storageClass have no S3-bucket-level equivalent and are intentionally
+    # dropped here; other vendor translations map them (see the
+    # gcp-crossplane RGD for storageClass).
+    - id: s3bucket
+      template:
+        apiVersion: s3.opendefense.internal/v1alpha1
+        kind: S3Bucket
+        metadata:
+          name: ${schema.metadata.name}
+          namespace: ${schema.metadata.namespace}
+        spec:
+          bucket: ${schema.spec.bucketName}
+          region: ${schema.spec.region}
+          sse: ${schema.spec.encryption}
+          provider: ${schema.spec.providerConfig.provider}
+          # When the Bucket arrives via api-syncagent from a kcp workspace,
+          # this annotation carries the original (consumer-side) resource
+          # name. Using it as the Secret base name means the credentials
+          # Secret synced back into the workspace is called
+          # "<consumer name>-credentials". Outside of kcp the annotation is
+          # absent and the local name is used.
+          secretBaseName: ${schema.metadata.?annotations["syncagent.kcp.io/remote-object-name"].orValue(schema.metadata.name)}

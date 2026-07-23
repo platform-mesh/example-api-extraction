@@ -1,0 +1,108 @@
+# Standalone example proving the "consumer secret + host gateway" mechanic
+# discussed for the real provider blueprints (see providers/gcp/manifests/
+# blueprint-objectstorage.yaml), decoupled from any real provider so the
+# mechanic can be validated on its own first.
+#
+# One RGD, three resources, two targets:
+#   - credentials (target: consumer): a Secret in the CONSUMER's workspace
+#     with an `endpoint` a consumer could point a client at. Its value is
+#     computed straight from schema.metadata.name — templates CAN reference
+#     schema (only status expressions cannot, see below) — so there is no
+#     need to read anything back from the host-target resources below.
+#   - gateway (target: host): a Deployment on the kind cluster running
+#     `rclone serve http` against rclone's in-memory backend (:memory:).
+#     Deliberately NOT wired to floci-gcp yet: the point of this example is
+#     to prove the Secret+Deployment+Service shape works at all before
+#     tackling a real backend.
+#   - gatewaySvc (target: host): a ClusterIP Service in front of it. For this
+#     PoC, reach it with:
+#       kubectl -n gcp port-forward svc/<name>-gateway 8080:8080
+#     (no NodePort/ingress — decided this is unnecessary for now).
+#
+# Requires (apply once per workspace, same pattern as jobs.batch elsewhere):
+#   kubectl apply -f ./providers/krop/kcp-provider-crd-deployments.yaml
+# (kcp serves neither apps/v1 nor batch/v1 natively; ConfigMap/Secret/Service
+# are core-group and already work without a stub, as proven by the plain
+# kcp-provider-example-rgd.yaml toy example.)
+#
+# CEL trap (see providers/gcp/manifests/blueprint-objectstorage.yaml for the
+# same issue): status expressions cannot reference `schema` directly, only
+# resource fields. That's why status below reads resource `.metadata.name`
+# instead of recomputing the gateway/credentials names from schema.
+#
+# NOT YET RUN END-TO-END — the apps/v1 stub and the :memory: rclone backend
+# are both inferred from proven patterns elsewhere in this repo, not verified
+# against a live krop-controller.
+apiVersion: krop.opendefense.cloud/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: example-gateway
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: ExampleGateway
+    group: example.io
+    spec:
+      value: string
+    status:
+      credentialsSecretName: ${credentials.metadata.name}
+      gatewayDeploymentName: ${gateway.metadata.name}
+      gatewayServiceName: ${gatewaySvc.metadata.name}
+      status: '${gateway.status.?readyReplicas.orValue(0) > 0 ? "Available" : "Provisioning"}'
+  resources:
+    - id: credentials
+      target: consumer
+      template:
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: ${schema.metadata.name}-credentials
+          namespace: ${schema.metadata.namespace}
+        stringData:
+          # gcp/8080 here must stay in sync with gatewaySvc's namespace/port below.
+          endpoint: ${"http://" + schema.metadata.name + "-gateway.gcp.svc.cluster.local:8080"}
+
+    - id: gateway
+      target: host
+      readyWhen:
+        - ${gateway.status.?readyReplicas.orValue(0) > 0}
+      template:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ${schema.metadata.name}-gateway
+          namespace: gcp # must match the krop-controller namespace
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: ${schema.metadata.name}-gateway
+          template:
+            metadata:
+              labels:
+                app: ${schema.metadata.name}-gateway
+            spec:
+              containers:
+                - name: gateway
+                  image: rclone/rclone:1.68.2
+                  command: ["rclone"]
+                  args: ["serve", "http", ":memory:", "--addr", ":8080"]
+                  ports:
+                    - name: http
+                      containerPort: 8080
+
+    - id: gatewaySvc
+      target: host
+      template:
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: ${schema.metadata.name}-gateway
+          namespace: gcp # must match gateway's namespace
+        spec:
+          selector:
+            app: ${schema.metadata.name}-gateway
+          ports:
+            - name: http
+              port: 8080
+              targetPort: 8080

@@ -1,0 +1,12 @@
+# Sample order for kcp-provider-example-gateway-rgd.yaml.
+# Apply the same way as kcp-provider-example-obj.yaml (see the comment there
+# for the bind-in-same-workspace test shortcut); after it's Available:
+#   kubectl get secret test-gateway-credentials -o jsonpath='{.data.endpoint}' | base64 -d
+#   kubectl -n gcp port-forward svc/test-gateway-gateway 8080:8080
+#   curl localhost:8080
+apiVersion: example.io/v1alpha1
+kind: ExampleGateway
+metadata:
+  name: test-gateway
+spec:
+  value: mytest

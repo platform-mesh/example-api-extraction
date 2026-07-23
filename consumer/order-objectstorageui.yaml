@@ -1,0 +1,11 @@
+# Sample order for consumer/manifests/blueprint-objectstorageui.yaml.
+# objectStorageName must reference an ObjectStorage that already exists and
+# is Available (e.g. bucket1, created by _consumer / order-objectstorage.yaml).
+# Keep the name short (krop-controller#8, same constraint as every other
+# instance name in this repo).
+apiVersion: storage.example.io/v1alpha1
+kind: ObjectStorageUI
+metadata:
+  name: uidemo
+spec:
+  objectStorageName: bucket1

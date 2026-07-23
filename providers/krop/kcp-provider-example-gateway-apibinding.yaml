@@ -1,0 +1,21 @@
+# Same shape as kcp-provider-example-apibinding.yaml, but claiming secrets
+# instead of configmaps (the credentials resource in the gateway example is a
+# Secret, target: consumer). No claim needed for the host-target Deployment/
+# Service — krop creates those directly on the host cluster, never through
+# this kcp APIBinding.
+apiVersion: apis.kcp.io/v1alpha2
+kind: APIBinding
+metadata:
+  name: examplegateways.example.io
+spec:
+  reference:
+    export:
+      name: examplegateways.example.io
+      path: root:gcp # this must be adjusted per provider
+  permissionClaims:
+    - group: ""
+      resource: secrets
+      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+      selector:
+        matchAll: true
+      state: Accepted

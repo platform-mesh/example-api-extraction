@@ -1,0 +1,58 @@
+# Debug/demo viewer: rclone's own web GUI, pre-configured (via
+# RCLONE_CONFIG_* env vars, same scheme as platform/object-storage-migrator's
+# copy-objects.sh) with a remote for each floci backend, so bucket contents
+# can be browsed in a browser while watching a migration happen.
+#
+# Apply: kubectl --context kind-platform-mesh apply -f hack/rclone-ui.yaml
+# Then:  kubectl --context kind-platform-mesh port-forward pod/rclone-ui 5572:5572
+# Open:  http://localhost:5572/ (click Login with blank credentials - the
+#        client always shows a login form, but --rc-no-auth means the server
+#        accepts anything)
+#
+# In the GUI, use the file explorer's remote dropdown to pick aws/gcp/azure
+# and browse into a bucket by name (matches the ObjectStorage instance name).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rclone-ui
+  namespace: default
+spec:
+  restartPolicy: Never
+  containers:
+    - name: rclone-ui
+      image: docker.io/rclone/rclone:1.74
+      command: ["rclone", "rcd", "--rc-web-gui", "--rc-addr=:5572", "--rc-no-auth", "--rc-web-gui-no-open-browser"]
+      env:
+        - name: RCLONE_CONFIG_AWS_TYPE
+          value: s3
+        - name: RCLONE_CONFIG_AWS_PROVIDER
+          value: Other
+        - name: RCLONE_CONFIG_AWS_REGION
+          value: us-east-1
+        - name: RCLONE_CONFIG_AWS_ENDPOINT
+          value: http://floci-aws.floci-aws.svc.cluster.local:4566/
+        - name: RCLONE_CONFIG_AWS_ACCESS_KEY_ID
+          value: test
+        - name: RCLONE_CONFIG_AWS_SECRET_ACCESS_KEY
+          value: test
+        - name: RCLONE_CONFIG_AWS_FORCE_PATH_STYLE
+          value: "true"
+        - name: RCLONE_CONFIG_GCP_TYPE
+          value: google cloud storage
+        - name: RCLONE_CONFIG_GCP_ENDPOINT
+          value: http://floci-gcp.floci-gcp.svc.cluster.local:4588/
+        - name: RCLONE_CONFIG_GCP_PROJECT_NUMBER
+          value: test-project
+        - name: RCLONE_CONFIG_GCP_ANONYMOUS
+          value: "true"
+        - name: RCLONE_CONFIG_AZURE_TYPE
+          value: azureblob
+        - name: RCLONE_CONFIG_AZURE_ACCOUNT
+          value: devstoreaccount1
+        - name: RCLONE_CONFIG_AZURE_KEY
+          value: Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+        - name: RCLONE_CONFIG_AZURE_ENDPOINT
+          value: http://floci-az.floci-az.svc.cluster.local:4577/devstoreaccount1
+      ports:
+        - containerPort: 5572
+          name: rc-web-gui

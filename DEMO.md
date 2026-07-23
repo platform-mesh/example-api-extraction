@@ -28,13 +28,17 @@ task local-setup         # or: ./local-setup/scripts/start.sh
 
 # 4. Deploy this PoC on top
 cd ../example-api-extraction    # (or wherever apiextractfork/example-api-extraction lives)
-./setup.bash
+./setup.bash setup          # core: broker, workspaces, migrator
+./setup.bash setup-mock     # floci + gcp/aws/azure providers
+./setup.bash consumer       # consumer workspace + first order (bucket1, eu)
 ```
 
-`./setup.bash` alone deploys the broker, all three providers (gcp/aws/azure)
-and a first order (`bucket1`, region `eu`). If you only need to (re)apply the
-provider wiring without redoing workspaces/broker/consumer, use
-`./setup.bash krop-providers`.
+`setup` only does the core broker/workspace/migrator plumbing — it no longer
+auto-creates providers or the consumer (that changed after the upstream
+rebase). `setup-mock` and `consumer` are separate, idempotent steps; re-run
+either on its own any time (e.g. `./setup.bash setup-mock` after adding a
+provider). `./setup.bash krop-providers` still works too, for re-applying
+just the gcp/aws/azure provider wiring without touching workspaces/broker.
 
 Background on what happens between order and realization — the handoff from
 the generic API to the provider API — is in
@@ -108,3 +112,37 @@ the generic API to the provider API — is in
    Note this is a create-only PoC: cutover doesn't delete the source bucket,
    so the object also still exists at the origin (e.g. `rclone ls aws:demo1`
    still shows it).
+
+## ObjectStorageUI — a dedicated web UI per bucket
+
+Instead of the shared `hack/rclone-ui.yaml` viewer, you can order a UI scoped
+to one specific, already-existing bucket:
+
+```bash
+./setup.bash consumer-ui   # one-time: installs its krop-controller + blueprint
+
+KUBECONFIG=kubeconfigs/workspaces/consumer.kubeconfig kubectl apply -f - <<EOF
+apiVersion: storage.example.io/v1alpha1
+kind: ObjectStorageUI
+metadata: {name: demoui}
+spec: {objectStorageName: demo1}   # must already exist and be Available
+EOF
+KUBECONFIG=kubeconfigs/workspaces/consumer.kubeconfig kubectl get objectstorageui demoui -w   # wait status.uiReady
+
+DEPLOY=$(kubectl -n consumer-ui get deployment -o name | grep demoui-ui)
+kubectl -n consumer-ui port-forward "$DEPLOY" 5573:5572
+```
+
+Open http://localhost:5573/ — same blank-login rclone GUI as before, but
+already configured with that one bucket's credentials, no remote-picking
+needed.
+
+**Only one `ObjectStorageUI` instance at a time** on a single-node kind
+cluster (fixed `hostPort`, see `consumer/README.md`). If a bucket migrates
+while its UI pod is running, the pod needs a manual restart
+(`kubectl -n consumer-ui delete pod -l app=demoui-ui`) to pick up the new
+provider's credentials — it doesn't auto-refresh.
+
+Full architecture, the `target: consumer` bug we hit building this (with the
+three tests that ruled out permissions/identity/topology as the cause) and
+the workaround are documented in `consumer/README.md`.

@@ -1,0 +1,166 @@
+# krop blueprint: installed directly in the CONSUMER's own workspace
+# (root:consumer, via its own krop-controller - see _consumer_ui/_krop in
+# setup.bash), not in a provider workspace. Takes the NAME of an ObjectStorage
+# the consumer already ordered the normal way (order-objectstorage.yaml or the
+# Marketplace UI) and uses its credentials Secret to stand up a browsable web
+# UI on the host cluster: a rclone `rcd --rc-web-gui` Deployment exposed via
+# hostPort (NOT a Service/NodePort - kcp in this workspace cannot resolve
+# core v1 Service's schema at all, even via a stub CRD: CRDs are only ever
+# served under /apis/<group>/<version>/..., never the special-cased core
+# /api/v1/... path, so an empty-group CRD is accepted but inert for this.
+# hostPort achieves the same "no port-forward" goal through the Deployment
+# resource, which does resolve fine), so a browser can upload/download files
+# straight into that bucket.
+#
+# ZERO target:consumer resources here - deliberately. First tried reading the
+# order's credentials Secret via krop itself (externalRef, target: consumer,
+# either straight to the Secret by its known `<order>-credentials` name, or
+# via `storage.status.relatedResources.credentials`). Both are permanently
+# blocked: this krop-controller isn't broker-routed (no AcceptAPI, no
+# krop::register, unlike gcp/aws/azure), and target:consumer's read/write
+# path appears to depend on plumbing the broker normally sets up when it
+# onboards a provider - confirmed live for BOTH a bound type (ObjectStorage)
+# and a plain core one (Secret): `kubectl auth can-i` reports allowed, the
+# real controller-runtime request still gets "forbidden ... access denied"
+# for the identical call. Not fixable with RBAC YAML - a krop-controller
+# design/internals question, not a config gap.
+#
+# Worked around instead: the `ui` Deployment's initContainer fetches the
+# credentials Secret itself with a plain `kubectl`, using a reusable
+# admin-scoped root:consumer kubeconfig `_consumer_ui` stores once as a host
+# Secret (`consumer-kcp-kubeconfig`) - the exact same kind of credential this
+# whole setup.bash already uses everywhere, just handed to the pod instead of
+# routed through krop's broken mechanism. Writes the fields to a shared
+# emptyDir; the main container sources them before starting rclone.
+#
+# Provider-agnostic by construction: the credentials Secret's `url` scheme
+# (s3://, gs://, az://) picks the rclone remote type at container start,
+# same switch as platform/object-storage-migrator/copy-objects.sh's setenv().
+# The provider-specific fields (project/anonymous, account/key,
+# access_key/secret_key) are all read optionally and left empty when they
+# don't apply to whichever provider actually fulfilled the order.
+#
+# CEL note: status expressions cannot reference schema (dry-run at build
+# time) - only resource fields, same constraint as every other blueprint here.
+apiVersion: krop.opendefense.cloud/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: objectstorageui
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: ObjectStorageUI
+    group: storage.example.io
+    spec:
+      objectStorageName: string
+    status:
+      uiReady: ${ui.status.?readyReplicas.orValue(0) > 0}
+      uiHostPort: ${ui.spec.template.spec.containers[0].ports[0].?hostPort.orValue(0)}
+
+  resources:
+    - id: ui
+      target: host
+      readyWhen:
+        - ${ui.status.?readyReplicas.orValue(0) > 0}
+      template:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ${schema.metadata.name}-ui
+          namespace: consumer-ui
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: ${schema.metadata.name}-ui
+          template:
+            metadata:
+              labels:
+                app: ${schema.metadata.name}-ui
+            spec:
+              # load-bearing for the initContainer's kubectl call - same
+              # mapping providers/krop/hostaliases applies to krop-controller
+              # itself; that component only patches krop-controller's own
+              # Deployment, not this one, so it's inlined here directly.
+              hostAliases:
+                - ip: "10.96.188.4"
+                  hostnames:
+                    - "localhost"
+                    - "portal.localhost"
+                    - "kcp.localhost"
+                    - "root.kcp.localhost"
+                    - "kcp.api.portal.localhost"
+                    - "nereus.kcp.localhost"
+                    - "triton.kcp.localhost"
+              volumes:
+                - name: creds
+                  emptyDir: {}
+                - name: kcp-kubeconfig
+                  secret:
+                    secretName: consumer-kcp-kubeconfig
+              initContainers:
+                - name: fetch-credentials
+                  image: docker.io/alpine/k8s:1.31.2
+                  env:
+                    - name: OBJECT_STORAGE_NAME
+                      value: ${schema.spec.objectStorageName}
+                  volumeMounts:
+                    - name: creds
+                      mountPath: /creds
+                    - name: kcp-kubeconfig
+                      mountPath: /kubeconfig
+                      readOnly: true
+                  command: ["/bin/sh", "-c"]
+                  args:
+                    - |
+                      set -eu
+                      secret_name="$OBJECT_STORAGE_NAME-credentials"
+                      echo "fetching $secret_name from root:consumer"
+                      for key in url endpoint project anonymous account key access_key secret_key; do
+                        value=$(kubectl --kubeconfig /kubeconfig/kubeconfig get secret "$secret_name" \
+                          -n default -o jsonpath="{.data.$key}" 2>/dev/null | base64 -d 2>/dev/null || true)
+                        echo "$key=$value" >> /creds/env
+                      done
+              containers:
+                - name: rclone-ui
+                  image: docker.io/rclone/rclone:1.74
+                  volumeMounts:
+                    - name: creds
+                      mountPath: /creds
+                      readOnly: true
+                  command: ["/bin/sh", "-c"]
+                  args:
+                    - |
+                      set -eu
+                      . /creds/env
+                      case "$url" in
+                        (s3://*)
+                          export RCLONE_CONFIG_REMOTE_TYPE=s3
+                          export RCLONE_CONFIG_REMOTE_PROVIDER=Other
+                          export RCLONE_CONFIG_REMOTE_ENDPOINT="$endpoint"
+                          export RCLONE_CONFIG_REMOTE_ACCESS_KEY_ID="$access_key"
+                          export RCLONE_CONFIG_REMOTE_SECRET_ACCESS_KEY="$secret_key"
+                          export RCLONE_CONFIG_REMOTE_FORCE_PATH_STYLE=true
+                          ;;
+                        (gs://*)
+                          export RCLONE_CONFIG_REMOTE_TYPE="google cloud storage"
+                          export RCLONE_CONFIG_REMOTE_ENDPOINT="$endpoint"
+                          export RCLONE_CONFIG_REMOTE_PROJECT_NUMBER="$project"
+                          export RCLONE_CONFIG_REMOTE_ANONYMOUS="$anonymous"
+                          ;;
+                        (az://*)
+                          export RCLONE_CONFIG_REMOTE_TYPE=azureblob
+                          export RCLONE_CONFIG_REMOTE_ACCOUNT="$account"
+                          export RCLONE_CONFIG_REMOTE_KEY="$key"
+                          export RCLONE_CONFIG_REMOTE_ENDPOINT="$endpoint"
+                          ;;
+                        (*)
+                          echo "unsupported protocol: $url" >&2
+                          exit 1
+                          ;;
+                      esac
+                      exec rclone rcd --rc-web-gui --rc-addr=:5572 --rc-no-auth --rc-web-gui-no-open-browser
+                  ports:
+                    - name: http
+                      containerPort: 5572
+                      hostPort: 5572

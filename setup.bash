@@ -357,6 +357,49 @@ _consumer() {
     log "Order fulfilled: $(KUBECONFIG="$ws_consumer" kubectl get objectstorage bucket1 -o jsonpath='{.status.url}')"
 }
 
+# _consumer_ui installs a krop-controller scoped to root:consumer (not a
+# provider workspace - only krop-controller can reach the host cluster, and
+# ObjectStorageUI needs to create a Deployment there) and publishes the
+# ObjectStorageUI blueprint. Not broker-routed - no AcceptAPI, unlike
+# krop::register.
+#
+# krop's target: consumer read/write path is broken for a krop-controller
+# that isn't broker-routed like this one (confirmed live: RBAC/can-i says
+# allowed, the real request still gets "forbidden" - for ANY resource type,
+# not just bound ones like ObjectStorage). Worked around instead of fixed:
+# the ObjectStorageUI blueprint has ZERO target:consumer resources. A
+# reusable admin-scoped kubeconfig for root:consumer (just $ws_consumer,
+# already scoped to only that one workspace) is stored once here as a host
+# Secret; the ui Deployment's initContainer uses it to fetch the order's
+# credentials Secret directly via plain kubectl, sidestepping krop's broken
+# mechanism entirely rather than depending on a fix for it.
+_consumer_ui() {
+    local kind_namespace="consumer-ui"
+    _krop consumer root:consumer "$ws_consumer" "$kind_namespace"
+
+    log "Storing a reusable root:consumer kubeconfig for the UI Deployment's initContainer"
+    kubectl create secret generic consumer-kcp-kubeconfig -n "$kind_namespace" \
+        --from-file=kubeconfig="$ws_consumer" \
+        --dry-run=client -o yaml \
+        | kubectl --kubeconfig "$kind_platform" apply -f-
+
+    log "Applying the Deployment schema CRD (root:consumer)"
+    kubectl --kubeconfig "$ws_consumer" apply -f ./providers/krop/kcp-provider-crd-deployments.yaml
+
+    log "Publishing the ObjectStorageUI blueprint"
+    local crd
+    for crd in resourcegraphdefinitions.krop.opendefense.cloud deployments.apps; do
+        KUBECONFIG="$ws_consumer" kubectl wait --for=condition=Established \
+            "crd/$crd" --timeout="$timeout" \
+            || die "CRD $crd not established"
+    done
+    kubectl::apply "$ws_consumer" ./consumer/manifests/blueprint-objectstorageui.yaml
+    KUBECONFIG="$ws_consumer" kubectl wait resourcegraphdefinitions.krop.opendefense.cloud/objectstorageui \
+        --for=jsonpath="{.status.exportedAPI}"=objectstorageuis.storage.example.io \
+        --timeout="$timeout" \
+        || die "ObjectStorageUI blueprint did not publish"
+}
+
 _krop() {
     local provider="$1"
     local ws_path="$2"
@@ -804,8 +847,9 @@ case "${1:-setup}" in
     (aws) _kubeconfig; _kcp; _provider_aws ;;
     (syncagent-gcp) _kubeconfig; _kcp; _gcp_provider ;;
     (consumer) _kubeconfig; _kcp; _consumer ;;
+    (consumer-ui) _kubeconfig; _kcp; _consumer_ui ;;
     (krop-providers) _kubeconfig; _kcp; _provider_gcp; _provider_aws; _provider_azure ;;
     (gcp-prod) _kubeconfig; _kcp; _host_gcp_prod; _provider_gcp_prod ;;
     (azure-prod) _kubeconfig; _kcp; _host_azure_prod; _provider_azure_prod ;;
-    (*) die "Unknown command: $1 (want: setup | setup-mock | setup-prod | teardown-mock | teardown-prod | kubeconfig | broker | gcp | aws | syncagent-gcp | consumer | krop-providers | gcp-prod | azure-prod)" ;;
+    (*) die "Unknown command: $1 (want: setup | setup-mock | setup-prod | teardown-mock | teardown-prod | kubeconfig | broker | gcp | aws | syncagent-gcp | consumer | consumer-ui | krop-providers | gcp-prod | azure-prod)" ;;
 esac

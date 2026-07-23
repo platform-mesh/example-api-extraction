@@ -13,6 +13,10 @@ A running Platform Mesh local-setup, then deploy the base setup:
 ./setup.bash
 ```
 
+Background on what happens between order and realization — the handoff from
+the generic API to the provider API — is in
+[generic-to-provider-api.md](generic-to-provider-api.md).
+
 ## Play-by-play
 
 1. Register a user in local-setup

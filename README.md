@@ -6,6 +6,10 @@ a consumer orders against one generic API, and the
 routes the order to a matching provider by capability/policy — the "API
 extraction" idea made concrete.
 
+How an order crosses from the generic API into a provider's API (and where
+fields actually get mapped) is documented in
+[generic-to-provider-api.md](generic-to-provider-api.md).
+
 ## Structure
 
 The example providers live in `providers/`, one cloud provider per directory.
